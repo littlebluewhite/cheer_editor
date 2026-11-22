@@ -187,6 +187,30 @@ describe('手機的檢視畫面：點場上的圓點看是誰', () => {
 		expect(lines()).toEqual(['m1', 'm2']);
 	});
 
+	it('點了小A，換成一般版面再換回手機版面（iPad 轉橫再轉直）：不再寫剛剛點的人', async () => {
+		// 會換的媒體查詢：記住頁面掛上的 change 監聽，換版面時叫它
+		const query = { matches: true, listeners: [] as (() => void)[] };
+		vi.stubGlobal('matchMedia', (q: string) =>
+			q === NARROW_SCREEN
+				? Object.assign(query, {
+						addEventListener: (_: string, f: () => void) => query.listeners.push(f),
+						removeEventListener: () => {}
+					})
+				: { matches: false }
+		);
+		const turn = async (narrow: boolean) => {
+			query.matches = narrow;
+			query.listeners.forEach((f) => f());
+			await flush();
+		};
+		await openOnPhone();
+		await tap(dot('m2'), 100, 100);
+		expect(corner()).toBe('小A　技巧·Lib 主底');
+		await turn(false);
+		await turn(true);
+		expect(corner()).toBe('站位 1');
+	});
+
 	it('切到「練習」再回來、開別支流程：不再寫剛剛點的人', async () => {
 		await openOnPhone();
 		await tap(dot('m2'), 100, 100);

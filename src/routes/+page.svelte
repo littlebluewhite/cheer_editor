@@ -187,7 +187,11 @@
 	let narrow = $state(narrowQuery?.matches ?? false);
 	onMount(() => {
 		if (!narrowQuery?.addEventListener) return;
-		const changed = () => (narrow = narrowQuery.matches);
+		// 換版面（手機版面 ↔ 一般版面，例：iPad 轉橫再轉直）就收掉剛剛點的人（#329）
+		const changed = () => {
+			narrow = narrowQuery.matches;
+			tappedId = null;
+		};
 		narrowQuery.addEventListener('change', changed);
 		return () => narrowQuery.removeEventListener('change', changed);
 	});
@@ -259,7 +263,7 @@
 		if (flow) saveFlowSetting('me', flow.name, id);	}
 	/** 手機的檢視畫面場地外圍框外的號碼條留多寬（公尺）：比電腦的窄，場地畫得比較大；站在外圍邊上的人會蓋到條號、格號。 */
 	const PHONE_NUMBER_BAND = 0.7;
-	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程就收掉。 */
+	/** 手機的檢視畫面點到的人：場地左下角寫他的名字和這個八拍做什麼。點空白處、切到練習、換流程、換版面就收掉。 */
 	let tappedId = $state<string | null>(null);
 	/** 點到的人的八拍表：只跟著流程和點到誰重算，播放頭動不用重算。 */
 	const tappedRows = $derived(flow && tappedId ? eightCountRows(flow, tappedId, false) : []);
