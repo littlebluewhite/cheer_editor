@@ -3,6 +3,7 @@
 import ShellCore
 import Testing
 import UIKit
+@testable import CheerEditor
 
 @MainActor
 @Suite(.serialized)
