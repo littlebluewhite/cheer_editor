@@ -27,19 +27,14 @@ struct PrintPipeTests {
         let zip = try Data(contentsOf: sample).base64EncodedString()
         let print = try String(contentsOf: fixtures.appendingPathComponent("print-eight-sheet.js"), encoding: .utf8)
         let h = Self.printHarness(site)
-        let spy = PrintSpy()
-        UIPrintInteractionController.shared.delegate = spy
-        defer {
-            UIPrintInteractionController.shared.dismiss(animated: false)
-            UIPrintInteractionController.shared.delegate = nil
-        }
+        defer { UIPrintInteractionController.shared.dismiss(animated: false) }
 
         try await h.load("")
         try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
         let hint = try await h.js(print, ["zip": zip]) as? String
         #expect(hint == "按「列印」。要存成 PDF 或傳給別人，在列印畫面按「分享」。")
 
-        try await h.waitUntil("列印畫面出來") { spy.presented == 1 }
+        try await Self.waitForSheet(h, "列印畫面出來")
         let formatter = UIPrintInteractionController.shared.printFormatter as? UIViewPrintFormatter
         #expect(formatter?.view === h.shell.webView)
         // 系統排預覽時 WebKit 換成列印的樣子：網頁收到 beforeprint
@@ -60,16 +55,13 @@ struct PrintPipeTests {
         let h = Self.printHarness(site)
         try await h.load("")
         try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
-        // 同一個 delegate 第二次叫出來時不一定再通知，所以看視窗上有沒有蓋著列印畫面
-        let sheetUp = { h.window.rootViewController?.presentedViewController != nil }
-
         #expect(try await h.js(script, ["zip": zip, "step": "summary"]) as? String == "ok")
-        try await h.waitUntil("總表：列印畫面出來") { sheetUp() }
+        try await Self.waitForSheet(h, "總表：列印畫面出來")
         #expect((UIPrintInteractionController.shared.printFormatter as? UIViewPrintFormatter)?.view === h.shell.webView)
         try await Self.dismiss()
 
         #expect(try await h.js(script, ["zip": zip, "step": "runThrough"]) as? String == "ok")
-        try await h.waitUntil("記一次全上表：列印畫面出來") { sheetUp() }
+        try await Self.waitForSheet(h, "記一次全上表：列印畫面出來")
         try await Self.dismiss()
     }
 
@@ -91,6 +83,24 @@ struct PrintPipeTests {
         return h
     }
 
+    /// 等列印畫面蓋在印的測試的視窗上（看視窗，不看 delegate：同一個 delegate 第二次叫出來時不一定再通知）。
+    /// 別的管子測試（ScreenFeelPipeTests）剛好把自己的視窗變成 key window 時，系統會丟掉這次的列印畫面，而且卡著不理下一次：
+    /// 等不到就收掉再按一次「列印」，最多三次。App 裡只有一個視窗，不會這樣。
+    static func waitForSheet(_ h: Harness, _ what: String) async throws {
+        for _ in 0..<3 {
+            let end = Date().addingTimeInterval(5)
+            while Date() < end {
+                if h.window.rootViewController?.presentedViewController != nil { return }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            // 被丟掉的那次還卡著（網頁停在列印的樣子，工具列看不到）：先收掉，再按一次
+            try await dismiss()
+            h.window.makeKeyAndVisible()
+            _ = try await h.js("[...document.querySelectorAll('button')].filter((b) => b.textContent.trim() === '列印').pop()?.click(); return null")
+        }
+        Issue.record("等不到：\(what)")
+    }
+
     /// 收乾淨再叫下一次（還沒收完就再叫，系統不理；程式收起來不會通知 delegate，所以看畫面上還有沒有蓋著的東西）。
     static func dismiss() async throws {
         UIPrintInteractionController.shared.dismiss(animated: false)
@@ -106,7 +116,7 @@ struct PrintPipeTests {
             .compactMap { ($0 as? UIWindowScene)?.windows }.joined()
             .compactMap { $0.rootViewController as? ShellViewController }
         let shellVC = try #require(found.first)
-        let webView = try #require(shellVC.view.subviews.compactMap { $0 as? WKWebView }.first, "先跑 npm run ios:web")
+        let webView = try #require(Printer.webView(in: shellVC.view), "先跑 npm run ios:web")
         shellVC.view.window?.makeKeyAndVisible()
         let spy = PrintSpy()
         UIPrintInteractionController.shared.delegate = spy

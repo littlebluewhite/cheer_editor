@@ -168,6 +168,28 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 - 真的按鍵盤的 ⌘P 沒試過：模擬器沒開視窗，送不了按鍵。測試是從網頁畫面裡的 `WKContentView` 送 `printContent`。
 - 按「分享」→ 存成 PDF 沒試過（測試按不到系統的列印畫面）。
 
+## 殼代網頁上網（#380，ADR 0023）
+
+網頁照舊 `fetch('/api/…')`；在 App 裡是 `app://local/api/…`，`App/Shell/ForwardRoute.swift` 轉到自己的網站（規則在 `ShellCore/Sources/ShellCore/Forward/`）：
+
+- 只轉 `app://local/api/` 底下的，只轉到自己的網站；同一個路徑、查詢字串、方法、內容。伺服器加新 API 不用改殼。
+- 送的時候 `Origin` 是網站的網址；網頁帶的 `Origin`、`Referer`、`Cookie`、`Sec-Fetch-*` 拿掉。伺服器沒改。
+- 登入 cookie 在殼自己的罐子（`CookieJar`，存在 Application Support 的 `cookies-<主機>-<埠>.json`），回給網頁的不帶 `Set-Cookie`。不用系統的 `HTTPCookieStorage`：它不收 http 送來的 `Secure` cookie，連本機的伺服器就登不進去。
+- 不跟轉址；連不上網站時網頁的 `fetch` 失敗（不會當成沒登入）。
+- 一開始塞 `siteUrl`（`SitePart`），網頁的「網站網址」用它（分享連結）。管理使用者頁在 App 裡藏起來。
+- 轉到哪：上架版（Release）一定是 `SiteAddress.production`；Debug 版可以用環境變數連本機的伺服器：`SIMCTL_CHILD_CHEER_SITE_URL=http://127.0.0.1:8080/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary`。
+- 管子測試 `PipeTests/ForwardPipeTests.swift` 在模擬器裡自己開一台小伺服器（`TinySite`），不連正式網站。
+
+## 手感（#376，2026-11-22，只在 iOS 27.2 模擬器上）
+
+規則在 `ShellCore/Sources/ShellCore/Feel/ScreenFeel.swift`，App 那邊是 `App/Shell/ScreenFeelView.swift`（包著網頁畫面的那一層）。
+
+- **邊邊**：網頁放在 safe area 裡，邊邊塗 `--paper`；網頁沒有深色模式，殼也固定用淺色（狀態列的字才是深的）。
+- **回彈**：網頁打開流程時說 `screen {kind: editor}`，離開說 `page`（`src/lib/shell-screen.svelte.ts`，情境 `bridge-scenarios/current/screen.json`）。每載入一頁殼先當是會捲的頁。整頁兩指放大本來就在網頁擋了（`src/hooks.client.ts` 的 gesturestart）。
+- **字跟著系統的「文字大小」**：放大倍數 = 內文字級 ÷ 17，上限照畫面算：橫拿的 iPad 放到剛好還有 1024×600（iPad mini 1.10 倍、13 吋 1.34 倍），窄螢幕放到短邊剩 320（iPhone SE 1.17 倍）。
+- **不用 `pageZoom`**（#336 原本定的）：網頁有 `width=device-width` 時，`pageZoom` 只讓 `innerWidth`、媒體查詢變小，版面不重排，字變大後右邊整排跑出畫面。殼改成改網頁的 `<meta name="viewport">`（`width=寬÷倍數, initial-scale=倍數`），量過會照放大後的寬重排。
+- 長按連結不預覽（`allowsLinkPreview = false`）。鍵盤照 Safari：殼不在鍵盤出來時縮小網頁。
+
 ## 殼自己更新網頁（#393、ADR 0025）
 
 - **什麼時候看**：App 打開、回到前景（`App/Update/WebUpdates.swift`），抓 `https://littlebluewhite.com/web-bundle.json`（docs/deploy.md「網頁的清單」）。網站寫死在 `WebUpdates.site`；開發版改抓 Mac 上的小網站是 #394。App 被 PipeTests 帶起來時不自己看，免得測試連到正式站。
@@ -191,6 +213,6 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 ## 還沒做的（後面的票）
 
-App 圖示、其他資料搬到殼（小設定 #378 等）、殼代網頁上網（#380）、更新按鈕和「App 太舊」（#394）、手感（#376）、出版指令（#340）。
+App 圖示、其他資料搬到殼（小設定 #378 等）、更新按鈕和「App 太舊」（#394）、出版指令（#340）。
 
 已知、還沒處理的：自己網址的 `target=_blank`（例：使用說明的連結）在原地開，會蓋掉編輯畫面；網頁用 `<a download>` 下載 `blob:` 的檔，App 裡會怎樣沒試（下載交給 #377／#391 那幾張）。只在 iOS 27.2 模擬器上跑過；「交給 Safari」測的是殼呼叫打開外面網址的那一步，沒看到 Safari 真的打開；「只開一個視窗」只靠 Info.plist，沒在 iPad 上試拖出第二個視窗。

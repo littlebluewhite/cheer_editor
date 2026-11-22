@@ -30,6 +30,15 @@ enum Printer {
 
 extension ShellViewController {
     /// ⌘P：印網頁畫面現在這一頁。
-    override func printContent(_ sender: Any?) {        Printer.present(view.subviews.lazy.compactMap { $0 as? WKWebView }.first)
+    override func printContent(_ sender: Any?) {
+        Printer.present(Printer.webView(in: view))
+    }
+}
+
+extension Printer {
+    /// 畫面裡的網頁畫面（包在別層裡也找得到，例：#376 的 ScreenFeelView）。
+    static func webView(in view: UIView) -> WKWebView? {
+        if let webView = view as? WKWebView { return webView }
+        return view.subviews.lazy.compactMap { webView(in: $0) }.first
     }
 }

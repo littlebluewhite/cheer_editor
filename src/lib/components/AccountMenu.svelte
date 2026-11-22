@@ -1,6 +1,7 @@
 <script lang="ts">
-	// 帳號選單「名字 ▾」：上面一行 email，下面「我的帳號」（#246）、「管理使用者」（#245，只有管理員有）、「登出」。放在首頁和帳號的頁面，不放編輯頁的上方列（#190）。
+	// 帳號選單「名字 ▾」：上面一行 email，下面「我的帳號」（#246）、「管理使用者」（#245，只有管理員有，App 裡沒有：#380）、「登出」。放在首頁和帳號的頁面，不放編輯頁的上方列（#190）。
 	import { resolve } from '$app/paths';
+	import { host } from '#lib/host.js';
 	import type { Me } from '#lib/server-api.js';
 	import { below, popover } from '#lib/popover.svelte.js';
 	import { m } from '#lib/paraglide/messages.js';
@@ -41,7 +42,7 @@
 		>
 			<div class="who">{me.email}</div>
 			<a role="menuitem" href={resolve('/account')}>{m.account_title()}</a>
-			{#if me.isAdmin}<a role="menuitem" href={resolve('/users')}>{m.users_title()}</a>{/if}
+			{#if me.isAdmin && !host().shell.inApp}<a role="menuitem" href={resolve('/users')}>{m.users_title()}</a>{/if}
 			<button
 				type="button"
 				role="menuitem"
