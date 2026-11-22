@@ -1,0 +1,10 @@
+{
+	"about": "雲端流程的音樂經過殼（#382，ADR 0023）：R2 只放行網站的網址，App 裡網頁跟伺服器拿到預簽網址後 fetch('/cloud-music?url=<預簽網址>')，殼直接送到 R2（上傳的內容先轉成 ArrayBuffer）。不經過橋，所以這裡只有一開始說殼會（cloudMusic）。",
+	"scenarios": [
+		{
+			"name": "一開始告訴網頁殼會代傳音樂",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["cloudMusic"] },
+			"steps": [{ "from": "web", "name": "ready", "reply": null }]
+		}
+	]
+}

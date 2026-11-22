@@ -10,6 +10,9 @@ enum SchemeRoutes {
             // #380
             ForwardRoute(),
 
+            // #382
+            CloudMusicRoute(),
+
             // #393
             context.webUpdates.route,
         ]

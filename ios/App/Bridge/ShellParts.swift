@@ -21,6 +21,9 @@ enum ShellParts {
             // #381
             CloudRoomPart.inApp(outbox: context.outbox),
 
+            // #382
+            CloudMusicPart(),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 
