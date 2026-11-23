@@ -123,7 +123,7 @@ export function amendRecordsJson(flow: string, ask: string): string {
 }
 
 /**
- * 一起記全上的表（#352，ADR 0020）：runs 是現在的表（RunsTogether 的 JSON，沒有就是 []），event 是 RunEvent 的 JSON
+ * 一起記全上的表（#352，ADR 0021）：runs 是現在的表（RunsTogether 的 JSON，沒有就是 []），event 是 RunEvent 的 JSON
  * 多帶 now（毫秒）和 viewers（要給哪些人看的使用者 id）。一次回 runTogether 的結果，加上 views：照 viewers 的順序，
  * 每個人看到的每次全上（runViews）。一次進出 QuickJS 就做完一件事和給大家看的樣子。
  */

@@ -1,4 +1,4 @@
-// 一起記全上的表（#352、#353，ADR 0015、0020）：規則只在流程核心這裡，真的伺服器（server/src/run_together.rs）和假伺服器都叫它。時間用給的。
+// 一起記全上的表（#352、#353，ADR 0015、0021）：規則只在流程核心這裡，真的伺服器（server/src/run_together.rs）和假伺服器都叫它。時間用給的。
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { runTogether, runViews, type RunEvent, type RunsTogether, type RunTogetherView } from './index';
 import { runTogetherJson, runViewsJson } from './bundle-entry';

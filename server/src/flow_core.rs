@@ -196,7 +196,7 @@ impl FlowCore {
         self.call_two("amendRecordsJson", flow, ask)
     }
 
-    /// 一起記全上的表做一件事（`runTogetherJson`，#352、#353，ADR 0020）：runs 是現在的表的 JSON，event 是 RunEvent 的 JSON
+    /// 一起記全上的表做一件事（`runTogetherJson`，#352、#353，ADR 0021）：runs 是現在的表的 JSON，event 是 RunEvent 的 JSON
     /// 多帶 now、viewers，回新的表、回答、變了沒、給每個看的人的樣子的 JSON（#353 起房間的每件事都叫它，見 run_together.rs）。
     pub fn run_together(
         &self,
@@ -578,12 +578,12 @@ mod tests {
         });
     }
 
-    /// 一起記全上的表（#352，ADR 0020）兩個門檻：
+    /// 一起記全上的表（#352，ADR 0021）兩個門檻：
     /// 1. 自己的時間：10 個人、40 組的表，「拿一組」加上給 10 個人看的樣子（`runTogetherJson` 一次做完），中位數 2 毫秒以內。
     /// 2. 排隊的時間：跑流程核心的執行緒只有一條，前面排著一個約 1 MB 流程的插入八拍（`takeStepJson`）時，
     ///    拿一組從交出去到拿回來多久，中位數 250 毫秒以內。
     /// 只印數字、不比時間（機器不同），所以平常不跑：
-    /// `cd server && cargo test --release --lib run_together_timing -- --ignored --nocapture`。結果寫在 ADR 0020。
+    /// `cd server && cargo test --release --lib run_together_timing -- --ignored --nocapture`。結果寫在 ADR 0021。
     #[tokio::test]
     #[ignore = "量時間用，手動跑"]
     async fn run_together_timing() {
