@@ -401,6 +401,12 @@
 	}
 
 	/** 點選單裡的一項：先關小窗、焦點放回「選單」（那一項馬上不見，對話框關掉後焦點回到這裡），再做那件事。 */
+	/** 「傳給別人」：選單收起來了，iPad 的分享選單從「選單」鈕跳出來。 */
+	function sendToOthers() {
+		const r = menuBtn?.getBoundingClientRect();
+		void editor.file.sendToOthers(r && { x: r.x, y: r.y, width: r.width, height: r.height });
+	}
+
 	function fromMenu(run: () => void) {
 		menuOpen = false;
 		menuBtn?.focus();
@@ -966,6 +972,10 @@
 								<!-- 練習的紀錄照樣要存 -->
 								<button type="button" onclick={() => fromMenu(() => editor.file.save())}><Icon name="save" />{m.editor_save()}</button>
 							{/if}
+							{#if editor.file.canSend}
+								<!-- 傳給別人（#385，只有 App）：分享選單送 .zip -->
+								<button type="button" onclick={() => fromMenu(sendToOthers)}><Icon name="send" />{m.editor_send_to_others()}</button>
+							{/if}
 							{#if can.share.ok}
 								<button type="button" onclick={() => fromMenu(() => (shareOpen = true))}><Icon name="people" />{m.editor_share()}</button>
 							{/if}
@@ -993,6 +1003,10 @@
 							{/if}
 							{#if can.newFlow.ok}
 								<button type="button" onclick={() => fromMenu(() => editor.file.startNew())}><Icon name="new" />{m.editor_new()}</button>
+							{/if}
+							{#if editor.file.canSend}
+								<!-- 傳給別人（#385，只有 App）：分享選單送 .zip，給沒帳號、用本機流程的人用 LINE 傳 -->
+								<button type="button" onclick={() => fromMenu(sendToOthers)}><Icon name="send" />{m.editor_send_to_others()}</button>
 							{/if}
 							{#if view === 'edit'}
 								<hr />

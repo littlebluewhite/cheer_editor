@@ -53,9 +53,10 @@ struct OpenFilePartTests {
 
     @Test func 開啟流程檔_選了回那個檔_按取消回null() async throws {
         var picked: URL? = handedFile("全國賽.zip")
-        let part = OpenFilePart(pick: { picked })
+        let part = OpenFilePart(pick: { picked }, places: .forScenario(folder: picked!.deletingLastPathComponent()))
+        // 選的是原檔：多給存回它的書籤（#385）
         #expect(try await part.handle(name: "pickFlowFile", body: nil)
-            == ["name": "全國賽.zip", "bytes": JSONValue.string(scenarioFlowFile.base64EncodedString())])
+            == ["name": "全國賽.zip", "bytes": JSONValue.string(scenarioFlowFile.base64EncodedString()), "target": "5YWo5ZyL6LO9LnppcA=="])
         picked = nil
         #expect(try await part.handle(name: "pickFlowFile", body: nil) == nil)
     }

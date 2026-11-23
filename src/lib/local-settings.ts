@@ -87,6 +87,27 @@ export function saveLastFlow(draftId: string): void {
 	}
 }
 
+const SAVE_TO_KEY = 'cheer-editor:saveTo:';
+
+/** App 裡一支本機流程（草稿 id）存檔存到哪（殼給的書籤，#385）：跟草稿一起記，App 關掉再開也蓋回同一個檔。沒記是 null。 */
+export function loadSaveTarget(draftId: string): string | null {
+	try {
+		return host().settings.get(SAVE_TO_KEY + draftId);
+	} catch {
+		return null;
+	}
+}
+
+/** 記下存到哪；null 是不記了（草稿丟了、草稿 id 換了）。 */
+export function saveSaveTarget(draftId: string, target: string | null): void {
+	try {
+		if (target) host().settings.set(SAVE_TO_KEY + draftId, target);
+		else host().settings.remove(SAVE_TO_KEY + draftId);
+	} catch {
+		// 存不了就下次再問存到哪
+	}
+}
+
 /** 拖分界改的大小：時間軸的高度（px）、右邊欄的寬度（視窗寬的比例）。存在 `cheer-editor:<名字>`。 */
 export type LayoutSize = 'timelineHeightPx' | 'inspectorWidthRatio';
 

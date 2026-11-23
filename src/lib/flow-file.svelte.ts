@@ -37,9 +37,10 @@ import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-sou
 import type { DroppedRecord } from '#lib/practice-rights.js';
 import type { TabChannel } from '#lib/tab-channel.js';
 import { host } from '#lib/host.js';
-import { loadLastFlow, saveLastFlow } from '#lib/local-settings.js';
+import { loadLastFlow, loadSaveTarget, saveLastFlow, saveSaveTarget } from '#lib/local-settings.js';
 import { SETTINGS_FEATURE } from '#lib/shell-settings.js';
 import { OPEN_FILE_FEATURE, takeOpenedFile } from '#lib/shell-open-file.js';
+import { cheerFileName, SAVE_FILE_FEATURE, shareFlowFile } from '#lib/shell-save-file.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -203,6 +204,8 @@ export class FlowFile {
 			const oldId = this.#draftId;
 			this.#draftId = fileDraftId(bytes);
 			if (oldId !== this.#draftId) void this.#dropDraft(oldId);
+			// App 裡存到哪跟著草稿 id 換（#385）
+			this.#rememberTarget(oldId);
 			this.#announce();
 			this.#saveDraftLater();
 			// App 裡沒有電腦的 Chrome、Edge 可以換（接了觸控板的 iPad 也是），跟觸控螢幕一樣只說原本的檔沒改（#392）
@@ -215,6 +218,38 @@ export class FlowFile {
 			session.notice = m.file_save_failed();
 		} finally {
 			this.#saving = false;
+		}
+	}
+
+	/**
+	 * App 裡記下這支流程存到哪（殼給的書籤，#385）：跟草稿一起記（小設定，key 是草稿 id），App 關掉再開從最近的流程、上次那支打開也蓋回同一個檔。
+	 * 存檔薄層沒有書籤（新的流程、LINE 傳來的副本：跟原檔位元組一樣，草稿 id 也一樣）就清掉，不沿用別的檔記的。網頁版的存檔薄層沒有書籤。
+	 * oldId：存檔後草稿 id 換了，舊的那筆不記了。
+	 */
+	#rememberTarget(oldId?: string) {
+		if (oldId && oldId !== this.#draftId) saveSaveTarget(oldId, null);
+		saveSaveTarget(this.#draftId, this.#saver?.remembered ?? null);
+	}
+
+	/** 選單有「傳給別人」：App 裡（殼會叫出分享選單送流程檔）開著本機流程（#385）。網頁版沒有（推論：iPad 的網頁存檔本來就是分享選單）。 */
+	get canSend(): boolean {
+		return host().shell.can(SAVE_FILE_FEATURE) && !!this.#editor.session.flow && this.#source.kind === 'local';
+	}
+
+	/**
+	 * 「傳給別人」（#385）：殼叫出分享選單送「流程名.zip」，內容跟存檔一樣（給沒帳號、用本機流程的人用 LINE 傳；iPhone 的 LINE 不收 .cheer）。
+	 * 不算存檔：不改未存的修改、不換存到哪。button：按的那顆鈕在網頁畫面上的位置（iPad 的分享選單從那裡跳出來）。
+	 */
+	async sendToOthers(button?: { x: number; y: number; width: number; height: number }) {
+		const { session, adapters, music } = this.#editor;
+		if (!this.canSend) return;
+		adapters.pendingInput.flush();
+		const f = session.flow!;
+		const fileName = flowFileName(f.name);
+		try {
+			if (await shareFlowFile(host().shell, writeFlowFile(f, music.bytes(f)), fileName, button)) session.notice = m.file_shared({ name: fileName });
+		} catch {
+			session.notice = m.file_send_failed();
 		}
 	}
 
@@ -269,7 +304,8 @@ export class FlowFile {
 				});
 				this.#draftAsk = null;
 				if (choice === 'cancel') return;
-				if (choice === 'draft') return this.#openBytes(changed.bytes, null, null, draftId);
+				// 救回修改：存檔照樣蓋回這個檔（#385）
+				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver, draftId);
 			}
 		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
@@ -732,7 +768,9 @@ export class FlowFile {
 		}
 		try {
 			const outcome = await adapters.download(writeFlowFile(flow, audio), fileName);
-			if (outcome !== 'cancelled') session.notice = savedText(outcome, fileName, false, false, false);
+			// App 裡存成 .cheer（#385）
+			const saved = host().shell.can(SAVE_FILE_FEATURE) ? cheerFileName(fileName) : fileName;
+			if (outcome !== 'cancelled') session.notice = savedText(outcome, saved, false, false, false);
 		} catch {
 			session.notice = m.file_download_failed();
 		}
@@ -809,6 +847,7 @@ export class FlowFile {
 		this.#fileBytes = null;
 		editor.adapters.pendingInput.settle();
 		this.#saver = saver;
+		this.#rememberTarget();
 		editor.switchMusic(music);
 		this.#openError = '';
 		this.#revoked = '';
@@ -924,7 +963,9 @@ export class FlowFile {
 		const r = draft && readFlowFile(draft.bytes);
 		if (!draft || !r || r.kind !== 'ok') return false;
 		const unchanged = fileDraftId(draft.bytes) === id;
-		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, null, id);
+		// App 裡記著存到哪（#385）：存檔照樣蓋回那個檔
+		const target = loadSaveTarget(id);
+		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, target ? this.#editor.adapters.createSaver(target) : null, id);
 		return true;
 	}
 
@@ -962,13 +1003,15 @@ export class FlowFile {
 	 */
 	async #openHandedFile(): Promise<boolean> {
 		if (!host().shell.can(OPEN_FILE_FEATURE)) return false;
-		const file = await takeOpenedFile(host().shell);
-		if (!file) return false;
+		const handed = await takeOpenedFile(host().shell);
+		if (!handed) return false;
+		const { file, target } = handed;
 		this.#reopening = false;
 		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次
 		const unsent = this.cloud?.unsent ?? 0;
 		if (unsent) this.#editor.session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
-		else await this.open(file);
+		// 「檔案」點的原檔：存檔蓋回它（#385）
+		else await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, target ? this.#editor.adapters.createSaver(target) : null);
 		return true;
 	}
 
@@ -991,6 +1034,7 @@ export class FlowFile {
 		} catch {
 			return 'failed';
 		}
+		saveSaveTarget(id, null);
 		this.#draftsChanged();
 		return 'dropped';
 	}
@@ -1157,7 +1201,11 @@ export class FlowFile {
 	#clearDraft(id: string) {
 		this.#editor.adapters.draftStore
 			.clear(id)
-			.then(() => this.#draftsChanged())
+			.then(() => {
+				// 草稿 id 換了（存檔後）時，記的存到哪已經搬到新的 id 了（#rememberTarget）
+				if (id !== this.#draftId) saveSaveTarget(id, null);
+				this.#draftsChanged();
+			})
 			.catch(() => {});
 	}
 

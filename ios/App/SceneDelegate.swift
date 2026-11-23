@@ -20,7 +20,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private func open(_ contexts: Set<UIOpenURLContext>) {
-        guard let url = contexts.first?.url, url.isFileURL else { return }
-        (window?.rootViewController as? ShellViewController)?.openFile(url)
+        guard let context = contexts.first, context.url.isFileURL else { return }
+        // 「檔案」點的是原檔（openInPlace，存檔蓋回它，#385）；分享選單給的是副本
+        (window?.rootViewController as? ShellViewController)?.openFile(context.url, inPlace: context.options.openInPlace)
     }
 }

@@ -7,9 +7,10 @@ final class ShellViewController: UIViewController {
     private var context: ShellContext?
 
     /// 「檔案」、分享選單交給 App 的流程檔（#384）：交給網頁打開。App 裡沒有網頁（沒跑 npm run ios:web）就不理。
-    func openFile(_ url: URL) {
+    /// inPlace：「檔案」給的原檔（存檔蓋回它，#385）；分享選單給的是副本。
+    func openFile(_ url: URL, inPlace: Bool = false) {
         loadViewIfNeeded()
-        context?.openFile?.handOver(url)
+        context?.openFile?.handOver(url, inPlace: inPlace)
     }
 
     override func viewDidLoad() {

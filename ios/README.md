@@ -32,6 +32,7 @@ ios/
     Shell/SchemeRoutes.swift    ★ app://local/ 上別的路（登記）
     Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
     Bridge/AppOpenFile.swift    打開流程檔：.cheer 的型別、選檔畫面（#384，下面「打開流程檔」）
+    Bridge/AppSaveFile.swift    存流程檔：存檔畫面、分享選單（#385，下面「存流程檔」）
     Update/WebUpdates.swift     殼自己更新網頁：App 這邊怎麼接（#393，下面「殼自己更新網頁」）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
@@ -94,7 +95,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`openFile`（打開交給 App 的流程檔、「開啟流程檔」請殼叫出選檔畫面，#384）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`openFile`（打開交給 App 的流程檔、「開啟流程檔」請殼叫出選檔畫面，#384）、`saveFile`（存檔蓋回原本的檔、問存到哪、「傳給別人」，#385）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -280,11 +281,11 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 殼不拆檔、不看內容，只把檔名和位元組（base64）交給網頁；網頁照開檔的規則打開（拆兩層、錯誤訊息、有沒存的修改先問，`src/lib/flow-file.svelte.ts`）。殼：`ShellCore/Sources/ShellCore/Parts/OpenFilePart.swift`（`openFile`）、`App/Bridge/AppOpenFile.swift`、`SceneDelegate.swift`。網頁：`src/lib/shell-open-file.ts`。說的話：`bridge-scenarios/current/openFile.json`。
 
-- **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存回在 #385），分享選單給的是副本。
+- **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存檔蓋回它，下一節），分享選單給的是副本（`UIOpenURLContext.options.openInPlace` 分得出來）。
 - **「檔案」點、分享選單交來的**：`SceneDelegate` 收到網址（App 沒開著是 `willConnectTo` 的 `urlContexts`，開著是 `openURLContexts`）交給 `OpenFilePart.handOver`：殼收著、說 `fileOpened`，網頁拿（`takeOpenedFile`）。拿過就沒了，重新載入不會又打開；網頁還沒拿又交一個，給最後那個。App 剛打開時網頁一開始就先拿，拿到了就開它，不開上次那支（上次那支的草稿還在）。讀檔用 security-scoped 加 `NSFileCoordinator`，不在主執行緒上讀。
 - **「開啟流程檔」**：網頁 `pickFlowFile`，殼叫出系統的選檔畫面（`UIDocumentPickerViewController`，只選得到 `.cheer`、`.zip`，`asCopy: false` 原地打開），按取消回 null。沒用 iOS 18.4 的 `WKUIDelegate` 選檔（`runOpenPanelWith`）：它會連段設定選音樂檔的 `<input type="file">` 一起接走，殼分不出是哪一個欄位、篩不了型別，也進不了情境檔。
 - **開著雲端流程、還有沒送到的步**時交來一個檔：不開（換掉那些步就不見了；回首頁有問的框，這條路沒有），提示「還有 N 步沒送到雲端：送到了再打開「檔名」一次」。殼已經把檔交出去了，要再點一次。
-- 存檔還是跟以前一樣（分享選單存成新檔）；蓋回原檔、記住存到哪是 #385。
+- 存檔蓋回原檔、記住存到哪：下一節（#385）。
 
 在 iOS 27.2 模擬器上看到的（2026-11-24，iPhone）：
 
@@ -292,6 +293,22 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - 管子測試 `PipeTests/OpenFilePipeTests.swift`：真的那包網頁，記著上次那支時交一個檔，開交來的那支；App 開著時交一個檔，打開它；首頁按「開啟流程檔」請殼選檔（選檔畫面換成直接回一個檔），打開它。
 - **沒試的**（測試按不到系統畫面，要手動）：在「檔案」App 裡用手點 `.cheer`；分享選單「更多」裡有沒有 App、交 `.zip`／`.cheer` 打不打得開；「開啟流程檔」的選檔畫面（選、取消）；iCloud Drive 裡還沒下載的檔；真機（#379）。
 - 分享選單能不能把 App 移到第一排：沒在裝置上驗。Apple 的 iPhone 使用手冊「Customize sharing options in an iPhone app」（https://support.apple.com/guide/iphone/iphc572ca489/ios ，2026-11-24 查，只看到搜尋摘要）寫：分享選單滑到「更多」→「編輯」，可以把一項加進「喜好項目」、拖動排順序；摘要說分享選項是照 App 各自設定（在 LINE 裡設的只管 LINE），要真機確認。
+
+## 存流程檔（#385，ADR 0024）
+
+殼：`ShellCore/Sources/ShellCore/Parts/SaveFilePart.swift`（`saveFile`；`FilePlaces` 是記書籤、找回、寫檔）、`App/Bridge/AppSaveFile.swift`。網頁：`src/lib/shell-save-file.ts`，殼會 `saveFile` 才換（`browserAdapters` 的 `createSaver`、`download`）。說的話：`bridge-scenarios/current/saveFile.json`。
+
+- **存檔蓋回原本的檔**：原地打開的檔（「檔案」點的、「開啟流程檔」選的）殼交檔時一起給書籤（`takeOpenedFile`／`pickFlowFile` 回的 `target`，base64）。網頁存檔時交回書籤（`saveFlowFile`），殼找回那個檔，用 `NSFileCoordinator`（`.forReplacing`）原地寫（不是 `.atomic` 換一個新檔）；檔被改名、搬走照樣找得到（書籤舊了回新的）。iOS 沒有 `.withSecurityScope`：先 `startAccessingSecurityScopedResource` 再用預設的選項記。
+- **新的流程、分享選單交來的副本**：沒有書籤，第一次存檔殼問存到哪：暫存資料夾寫「流程名.cheer」，叫出系統的存檔畫面（`UIDocumentPickerViewController(forExporting:asCopy: false)`），系統搬過去，回那裡的網址記成書籤；之後都蓋回那裡。記的檔找不到、寫不進去（被刪了、沒權限）也改問存到哪，不說存檔失敗。按取消網頁當沒存。
+- **App 關掉再開也記得**：殼不留書籤，網頁跟草稿一起記在小設定 `cheer-editor:saveTo:<草稿 id>`（存檔後草稿 id 換了就搬過去，草稿丟了就刪掉；`src/lib/flow-file.svelte.ts` 的 `#rememberTarget`）。從最近的流程、上次那支打開時用它建存檔薄層。iPhone 選單裡的「存檔」走同一條路。
+- **傳給別人**（選單，只有 App；網頁版沒有是推論：iPad 的網頁存檔本來就是分享選單）：殼叫出分享選單（`UIActivityViewController`）送「流程名.zip」，內容跟存檔一樣；iPad 從「選單」鈕跳出來（選單收起來了）。不算存檔。iPhone、iPad 的 LINE 收 `.zip`（#364 真機）。
+- **雲端流程「下載成流程檔」**：每次問存到哪、存成 `.cheer`，不記（規格標推論）。
+
+開工先驗（2026-11-24，iOS 27.2 模擬器；結果要留言在 #360）：
+
+- **`xcrun simctl openurl` 交來的不是原檔**：殼收到的是 App 自己 `Documents/Inbox/` 裡的副本（`openInPlace = false`，檔名還會加 `-1`、`-2`），所以 #384 上面寫的「openurl 開了那支流程」走的是副本那條路。「檔案」App 裡用手點才是原地打開，模擬器上沒辦法用指令點，**「「檔案」點進來的檔記成書籤、App 關掉再開還寫不寫得回去」沒驗到**。沒驗到就照退路：書籤找不回、寫不進去時殼自己改問存到哪（不用改程式）。要在真機（#379）或模擬器的「檔案」App 用手試：點 `.cheer` → 改 → 存檔（原檔變了、沒多新檔）→ 從 App 切換器滑掉 → 再開 → 改 → 存檔。
+- 管子測試 `PipeTests/SaveFilePipeTests.swift`：真的那包網頁、真的書籤和 `NSFileCoordinator`，原地交來的檔存檔蓋回去、沒多新檔；副本第一次問存到哪、第二次蓋回去；選單「傳給別人」送 `.zip`。模擬器的 App 不受 sandbox 限制，security-scoped 的部分這裡驗不到。
+- 沒試的（系統畫面測試按不到）：存檔畫面（存、取消、同名要不要取代）、存檔畫面回的網址記成書籤後能不能再寫、分享選單送到 LINE、iCloud Drive 裡的檔。
 
 ## 還沒做的（後面的票）
 

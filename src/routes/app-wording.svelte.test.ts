@@ -45,6 +45,20 @@ describe('輸出影片', () => {
 	});
 });
 
+describe('傳給別人（#385）', () => {
+	it('App 裡（殼會送流程檔）：選單有「傳給別人」', async () => {
+		fakeHost({ shell: fakeShell(['saveFile']) });
+		await openMenu();
+		expect(await menuItem('傳給別人')).toBeTruthy();
+	});
+
+	it('網頁版：選單沒有（推論：iPad 的網頁存檔本來就是分享選單）', async () => {
+		await openMenu();
+		expect(await menuItem('新建')).toBeTruthy();
+		expect(await menuItem('傳給別人')).toBeFalsy();
+	});
+});
+
 describe('另一個分頁正在編', () => {
 	it('App 裡（只有一個視窗）：首頁不標「另一個分頁正在編」，打得開', async () => {
 		fakeHost({ shell: fakeShell() });

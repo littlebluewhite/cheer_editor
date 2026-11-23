@@ -9,6 +9,7 @@
 		home: 'M3 11l9-8 9 8M5 9.5V21h5v-6h4v6h5V9.5',
 		cloud: 'M7 19h10.5a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.6 1.5A3.8 3.8 0 0 0 7 19z',
 		download: 'M12 3v12M7 10l5 5 5-5M4 21h16',
+		send: 'M12 15V3M7 8l5-5 5 5M5 11v10h14V11',
 		menu: 'M4 6h16M4 12h16M4 18h16',
 		print: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
 		video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',

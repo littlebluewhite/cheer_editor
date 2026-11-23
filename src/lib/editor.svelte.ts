@@ -26,15 +26,16 @@ import { httpServer, type ServerAdapter } from '#lib/server-api.js';
 import type { OfflineStore } from '#lib/offline-store.js';
 import { host } from '#lib/host.js';
 import { OPEN_FILE_FEATURE, shellFilePicker } from '#lib/shell-open-file.js';
+import { SAVE_FILE_FEATURE, shellAskWhere, shellSaver } from '#lib/shell-save-file.js';
 import { browserNetwork, type NetworkAdapter } from '#lib/network.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
 export interface EditorAdapters {
 	/** 音訊引擎；第一次播放時才建立。 */
 	createEngine: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
-	/** 存檔薄層，一支流程一個（記得存到哪個檔）。 */
-	createSaver: () => FileSaver;
-	/** 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載。 */
+	/** 存檔薄層，一支流程一個（記得存到哪個檔）。remembered：App 裡記著的存到哪（殼給的書籤，#385）。 */
+	createSaver: (remembered?: string) => FileSaver;
+	/** 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載；App 裡每次問存到哪（#385）。 */
 	download: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome>;
 	/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge；App 裡請殼叫出選檔畫面，#384）；null 是瀏覽器不能（照舊用選檔欄位）。 */
 	pickFlowFile: (() => Promise<PickedFile | null>) | null;
@@ -61,11 +62,15 @@ export interface EditorAdapters {
 /** 真的 adapter：Web Audio、File System Access（沒有就下載、iPad 分享）、IndexedDB（草稿、離線存放）、BroadcastChannel、焦點所在的欄位、requestAnimationFrame、fetch、navigator.onLine。 */
 export function browserAdapters(): EditorAdapters {
 	const network = browserNetwork();
+	const shell = host().shell;
+	// App 裡存檔請殼存：蓋回原檔、問存到哪（#385）
+	const inShell = shell.can(SAVE_FILE_FEATURE);
+	const createSaver = (remembered?: string) => (inShell ? shellSaver(shell, remembered ?? null) : createBrowserSaver());
 	return {
 		createEngine: createWebAudioEngine,
-		createSaver: () => createBrowserSaver(),
-		download: downloadFile,
-		pickFlowFile: host().shell.can(OPEN_FILE_FEATURE) ? shellFilePicker(host().shell, () => createBrowserSaver()) : browserFilePicker(),
+		createSaver,
+		download: inShell ? shellAskWhere(shell) : downloadFile,
+		pickFlowFile: shell.can(OPEN_FILE_FEATURE) ? shellFilePicker(shell, createSaver) : browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: host().createDraftStore(),
 		openTabChannel: browserTabChannel(),

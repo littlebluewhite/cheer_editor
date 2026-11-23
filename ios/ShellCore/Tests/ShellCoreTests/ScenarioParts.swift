@@ -35,7 +35,22 @@ final class ScenarioShell {
 
     // #384：交給 App 的檔、選檔畫面選到的（nil 是按取消）
     var picked: URL?
-    private(set) lazy var openFile = OpenFilePart(outbox: outbox, pick: { self.picked })
+    private(set) lazy var openFile = OpenFilePart(outbox: outbox, pick: { self.picked }, places: places)
+
+    // #385：原地打開的檔、存檔畫面存的都放這個資料夾（書籤是檔名）；askWhere 是存檔畫面（nil 是按取消）
+    let fileFolder = handedFile("x").deletingLastPathComponent()
+    private(set) lazy var places = FilePlaces.forScenario(folder: fileFolder)
+    var savesAt: String? = "新流程.cheer"
+    private(set) var sharedFiles: [String] = []
+    private(set) lazy var saveFile = SaveFilePart(
+        askWhere: { _, bytes in
+            guard let name = self.savesAt else { return nil }
+            let url = self.fileFolder.appendingPathComponent(name)
+            try? bytes.write(to: url)
+            return url
+        },
+        share: { name, _, _ in self.sharedFiles.append(name); return true },
+        places: places)
 
     // #389
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
@@ -82,6 +97,9 @@ final class ScenarioShell {
             // #384
             openFile,
 
+            // #385
+            saveFile,
+
             // #389
             nowPlaying,
 
@@ -121,7 +139,12 @@ final class ScenarioShell {
         let setupList: [(String, @MainActor () async -> Void)] = [
             // #384：點流程檔打開 App（網頁還沒起來就交了）；選檔畫面選了 .zip
             ("點流程檔打開 App：網頁一開始先拿那個檔；拿過就沒了，重新載入不會又打開", { self.openFile.handOver(handedFile("全國賽.cheer")) }),
-            ("App 裡按「開啟流程檔」：殼叫出選檔畫面，選了回那個檔", { self.picked = handedFile("全國賽.zip") }),
+            ("App 裡按「開啟流程檔」：殼叫出選檔畫面，選了回那個檔", { self.picked = self.inFolder("全國賽.zip") }),
+
+            // #385：「檔案」點了 .cheer（原檔）；App 關掉再開時那個檔還在；存檔畫面按取消
+            ("從「檔案」打開的流程檔：存檔蓋回原本那個檔，不問存到哪", { self.openFile.handOver(self.inFolder("全國賽.cheer"), inPlace: true) }),
+            ("App 關掉再開：網頁交回記著的書籤，蓋回同一個檔", { _ = self.inFolder("全國賽.cheer") }),
+            ("新的流程第一次存檔，存到哪按取消：回 null", { self.savesAt = nil }),
 
             // #393
 
@@ -130,5 +153,12 @@ final class ScenarioShell {
             ("雲端流程被擋：網站上的要比這個殼新的殼，不換", { self.webSite.site.publish(newFiles, minShellBuild: 2) }),
         ]
         setups = Dictionary(uniqueKeysWithValues: setupList)
+    }
+
+    /// 在 fileFolder 放一個流程檔（情境裡的那支「全國賽」），回它的網址。
+    func inFolder(_ name: String) -> URL {
+        let url = fileFolder.appendingPathComponent(name)
+        try! scenarioFlowFile.write(to: url)
+        return url
     }
 }

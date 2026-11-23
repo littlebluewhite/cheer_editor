@@ -1,7 +1,7 @@
 // 在 App 裡打開流程檔（#384，ADR 0024）：App 這邊。規則在 ShellCore 的 OpenFilePart。
 // - 「檔案」點 .cheer、分享選單把 .zip、.cheer 交給 App：SceneDelegate 收到網址，交給 OpenFilePart（handOver）。
 //   型別宣告在 Info.plist：.cheer 是自己的型別（conform 到 public.data、public.content，不 conform 到 public.zip-archive），zip 是「也能開」（分享選單用）。
-//   LSSupportsOpeningDocumentsInPlace：「檔案」給的是原檔（存回是 #385），分享選單給的是副本。
+//   LSSupportsOpeningDocumentsInPlace：「檔案」給的是原檔（存檔蓋回它，#385 的 SaveFilePart），分享選單給的是副本。
 // - 「開啟流程檔」：叫出系統的選檔畫面，只選得到 .cheer、.zip，原地打開（asCopy: false），不複製一份。
 import ShellCore
 import UIKit
