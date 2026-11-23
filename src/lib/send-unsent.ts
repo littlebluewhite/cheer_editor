@@ -5,7 +5,7 @@
 // 傳完從這台現在存著的拿掉伺服器回答了的（傳的時候別的分頁又記的留著），帳號頁再讀一次還剩幾筆。
 
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
-import { unsentFlows, type AmendRequest, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
+import { unsentFlows, type OfflineStore, type UnsentRecords } from '#lib/offline-store.js';
 import type { CloudRecord, FlowRoom, ServerAdapter } from '#lib/server-api.js';
 
 /** 這台每支流程還沒傳的都試著傳一次；傳不上去的留在這台。 */
