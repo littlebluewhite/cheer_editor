@@ -139,8 +139,16 @@ impl Server {
         User { cookie, email }
     }
 
-    /// 連上、打招呼，回房間（伺服器說了可以送步）。
+    /// 連上、打招呼，回房間（伺服器說了可以送步、自己進來了；打招呼時說的全上已經讀掉）。
     async fn join(&self, who: &User, id: &str) -> Socket {
+        let mut socket = self.connect(who, id).await;
+        hello(&mut socket, who).await;
+        runs_until_present(&mut socket).await;
+        socket
+    }
+
+    /// 只連上、還沒打招呼。
+    async fn connect(&self, who: &User, id: &str) -> Socket {
         let mut req = format!("ws://{}/api/flows/{id}/room", self.addr)
             .into_client_request()
             .unwrap();
@@ -148,12 +156,7 @@ impl Server {
             .insert("sec-fetch-site", "same-origin".parse().unwrap());
         req.headers_mut()
             .insert("cookie", who.cookie.parse().unwrap());
-        let (mut socket, _) = tokio_tungstenite::connect_async(req).await.unwrap();
-        let hello =
-            json!({ "kind": "hello", "fingerprint": FINGERPRINT, "tabId": who.email, "seen": 0 });
-        say(&mut socket, hello).await;
-        assert_eq!(until(&mut socket, "ready").await["kind"], "ready");
-        socket
+        tokio_tungstenite::connect_async(req).await.unwrap().0
     }
 
     /// 王教練（擁有者）建一支有 Lib 的流程（三個環節、兩組，照 fixtures/sample-steps.json 的第 2–7 步），
@@ -284,8 +287,9 @@ async fn an_opened_run_through_reaches_recorders_not_viewers_and_joining_uses_it
     assert!(quiet(&mut viewer).await, "檢視者不該收到");
 
     // 後來才連上的能記的人一連上就看到。
-    let mut again = s.join(&lin, &id).await;
-    assert_eq!(people(&until(&mut again, "runThroughs").await).len(), 2);
+    let mut again = s.connect(&lin, &id).await;
+    hello(&mut again, &lin).await;
+    assert_eq!(people(&runs_until_present(&mut again).await[0]).len(), 2);
 }
 
 #[sqlx::test]
@@ -424,6 +428,27 @@ async fn the_same_squad_in_the_same_run_through_keeps_only_the_first_saved(db: s
         .send("GET", &format!("/api/flows/{id}"), None, &lin.cookie)
         .await;
     assert_eq!(got["records"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn the_same_squad_twice_in_one_batch_keeps_the_first_and_names_the_sender(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let mut coach = s.join(&wang, &id).await;
+
+    say(
+        &mut coach,
+        json!({ "kind": "record", "attempts": [entry("twang11111110", SQUAD_2), entry("twang22222220", SQUAD_2)] }),
+    )
+    .await;
+    let reply = until(&mut coach, "recordsSaved").await;
+    assert_eq!(reply["saved"].as_array().unwrap().len(), 1);
+    assert_eq!(reply["saved"][0]["attempt"]["id"], "twang11111110");
+    assert_eq!(
+        reply["dropped"],
+        json!([{ "id": "twang22222220", "message": "王教練已經記了這次全上的這一組", "by": "王教練" }])
+    );
 }
 
 #[sqlx::test]
@@ -622,8 +647,9 @@ async fn coming_back_within_a_minute_keeps_the_squads_and_reports_refill_a_resta
     until(&mut coach, "runThroughs").await;
     say(&mut phone, report("2026-11-07", &["n:2"], &[], false)).await;
     until(&mut phone, "runThroughs").await;
-    let mut tablet = s2.join(&mei, &id).await;
-    let seen = until(&mut tablet, "runThroughs").await;
+    let mut tablet = s2.connect(&mei, &id).await;
+    hello(&mut tablet, &mei).await;
+    let seen = runs_until_present(&mut tablet).await.remove(0);
     assert_eq!(people(&seen), vec!["王教練", "林教練"]);
     assert_eq!(
         holders(&seen),
@@ -660,6 +686,139 @@ async fn a_revoked_recorder_is_kicked_out_and_his_squads_are_freed(db: sqlx::PgP
     let after = until_with(&mut coach, |m| people(m).len() == 1).await;
     assert_eq!(people(&after), vec!["王教練"]);
     assert_eq!(holders(&after), vec![hold("n:1", "王教練", false, false)]);
+}
+
+#[sqlx::test]
+async fn two_people_grabbing_the_same_free_squads_at_once_each_squad_goes_to_one_and_the_other_is_refused(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+    say(&mut coach, report("2026-11-07", &[], &[], false)).await;
+    until(&mut phone, "runThroughs").await;
+    say(&mut phone, report("2026-11-07", &[], &[], true)).await;
+    until_with(&mut coach, |m| people(m).len() == 2).await;
+
+    // 兩個人一起搶 20 組沒人拿著的（不等回答）：每組只給一個人，另一個人一定退回。
+    let keys: Vec<String> = (10..30).map(|n| format!("n:{n}")).collect();
+    for key in &keys {
+        let claim = json!({ "kind": "claim", "run": RUN, "key": key, "from": null });
+        say(&mut coach, claim.clone()).await;
+        say(&mut phone, claim).await;
+    }
+    // 兩邊收到的都讀完（一陣子沒有新的），記下退回和最後的表。
+    let mut refused = vec![];
+    let mut table = Value::Null;
+    for socket in [&mut coach, &mut phone] {
+        while let Ok(Some(Ok(Message::Text(text)))) =
+            tokio::time::timeout(Duration::from_millis(1000), socket.next()).await
+        {
+            let m: Value = serde_json::from_str(&text).unwrap();
+            if m["kind"] == "claimRefused" {
+                refused.push((
+                    m["key"].as_str().unwrap().to_owned(),
+                    m["by"].as_str().unwrap().to_owned(),
+                ));
+            } else if m["kind"] == "runThroughs" {
+                table = m;
+            }
+        }
+    }
+    let held: std::collections::HashMap<String, String> =
+        holders(&table).into_iter().map(|h| (h.0, h.1)).collect();
+    assert_eq!(held.len(), keys.len());
+    refused.sort();
+    let mut want: Vec<_> = held.into_iter().collect();
+    want.sort();
+    assert_eq!(refused, want, "每組退回一個人，退回時說的是拿到的人");
+}
+
+/// 打招呼，等伺服器說可以送步。
+async fn hello(socket: &mut Socket, who: &User) {
+    let hello =
+        json!({ "kind": "hello", "fingerprint": FINGERPRINT, "tabId": who.email, "seen": 0 });
+    say(socket, hello).await;
+    assert_eq!(until(socket, "ready").await["kind"], "ready");
+}
+
+#[sqlx::test]
+async fn a_second_connection_of_the_same_person_never_shows_an_older_table_than_it_already_showed(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut phone = s.join(&lin, &id).await;
+    say(&mut phone, report("2026-11-07", &["n:1"], &[], false)).await;
+    until(&mut phone, "runThroughs").await;
+
+    // 林教練用平板連上，還沒打招呼時手機又拿了兩組（平板已經在聽房間了）。
+    let mut tablet = s.connect(&lin, &id).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    for key in ["n:2", "n:3"] {
+        let claim = json!({ "kind": "claim", "run": RUN, "key": key, "from": null });
+        say(&mut phone, claim).await;
+        until_with(&mut phone, |m| holders(m).iter().any(|h| h.0 == key)).await;
+    }
+
+    // 平板打招呼：一連上就是三組，之後收到的不會又變回比較舊的。
+    hello(&mut tablet, &lin).await;
+    let seen: Vec<usize> = runs_until_present(&mut tablet)
+        .await
+        .iter()
+        .map(|m| holders(m).len())
+        .collect();
+    assert_eq!(seen.first(), Some(&3));
+    assert!(seen.iter().all(|n| *n == 3), "平板收到的組數：{seen:?}");
+}
+
+#[sqlx::test]
+async fn coming_back_after_the_run_through_ended_while_offline_is_told_there_is_none(
+    db: sqlx::PgPool,
+) {
+    let s = Server::new(db).await;
+    let lin = s.user("lin@example.com", "林教練").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&lin, "recorder")]).await;
+    let mut coach = s.join(&wang, &id).await;
+    let mut phone = s.join(&lin, &id).await;
+    say(&mut coach, report("2026-11-07", &["n:1"], &[], false)).await;
+    until(&mut phone, "runThroughs").await;
+
+    // 林教練的手機斷線，斷線時王教練存好離開：表裡沒人了。
+    drop(phone);
+    say(&mut coach, json!({ "kind": "leaveRun", "run": RUN })).await;
+    until_with(&mut coach, |m| m["runs"] == json!([])).await;
+
+    // 手機連回來：伺服器一定說現在沒有全上，畫面不會留著舊的。
+    let mut phone = s.connect(&lin, &id).await;
+    hello(&mut phone, &lin).await;
+    let seen = runs_until_present(&mut phone).await;
+    assert_eq!(seen, vec![json!({ "kind": "runThroughs", "runs": [] })]);
+}
+
+/// 打招呼之後、到自己進來的 present 為止收到的每個 runThroughs（連上到打招呼之間排著的都在 present 之前）。
+async fn runs_until_present(socket: &mut Socket) -> Vec<Value> {
+    let mut seen = vec![];
+    loop {
+        let m = tokio::time::timeout(Duration::from_secs(5), socket.next())
+            .await
+            .expect("伺服器一直沒說 present");
+        let Some(Ok(Message::Text(text))) = m else {
+            panic!("房間關了：{m:?}");
+        };
+        let m: Value = serde_json::from_str(&text).unwrap();
+        match m["kind"].as_str() {
+            Some("present") => return seen,
+            Some("runThroughs") => seen.push(m),
+            _ => {}
+        }
+    }
 }
 
 async fn say(socket: &mut Socket, message: Value) {

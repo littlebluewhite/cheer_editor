@@ -105,6 +105,24 @@ describe('練習的權限', () => {
 		expect(rights(s.session)).toMatchObject({ cannotRecord: '你只能看這支流程', ownRecordsOnly: false });
 	});
 
+	it('被改成檢視者之後重送收過的紀錄：回存著的那一筆，不是「你只能看這支流程」（跟真的伺服器一樣，c2657199）', async () => {
+		const s = await cloudEditor({ owner: WANG, people: { [LIN]: 'recorder' }, records: records() });
+		s.changeRole('c1', LIN, 'viewer');
+		await flush();
+		const lin = s.joinAs('c1', LIN);
+		const fresh = attempt('tnew000000001');
+		lin.room.send({ kind: 'record', attempts: [attempt('tlin000000001'), fresh] });
+		await flush();
+		expect(lin.heard.filter((m) => m.kind === 'recordsSaved')).toEqual([
+			{
+				kind: 'recordsSaved',
+				saved: [{ ...attempt('tlin000000001'), by: null, mine: true }],
+				dropped: [{ id: 'tnew000000001', message: '你只能看這支流程' }]
+			}
+		]);
+		expect(s.state.flows[0].records).toHaveLength(3);
+	});
+
 	it('別人記的進來：記下名字', async () => {
 		const s = await cloudEditor();
 		s.recordAs('c1', WANG, [attempt('twang00000002')]);

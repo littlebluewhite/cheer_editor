@@ -12,11 +12,11 @@
 import type { Command } from './commands';
 import { runCommands } from './commands';
 import { runUndo } from './cloud-undo';
-import type { Flow } from './flow';
+import { same, type Flow } from './flow';
 import { problemKeys } from './flow-check';
 import { remoteChange, type RemoteChange } from './remote-change';
 import { stepKeys } from './step-keys';
-import { putRecords, takeRecords, type StoredAttempt } from './stored-records';
+import { putRecords, stored, takeRecords, type StoredAttempt } from './stored-records';
 import type { Said } from './why';
 
 /** 步驟紀錄留幾天：比這久的步不能復原、重做。 */
@@ -214,23 +214,8 @@ function reasonOf({ message, why }: Said): Said {
 	return why ? { message, why } : { message };
 }
 
-/** 只留動作和那一次（伺服器上的一次多帶的拿掉）。 */
-function stored({ actionId, attempt }: StoredAttempt): StoredAttempt {
-	return { actionId, attempt };
-}
-
-/** 兩個 JSON 值一樣（物件不管鍵的先後，跟伺服器比 JSON 一樣）。 */
-function sameJson(a: unknown, b: unknown): boolean {
-	if (a === b) return true;
-	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-	if (Array.isArray(a) !== Array.isArray(b)) return false;
-	if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => sameJson(x, (b as unknown[])[i]));
-	const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
-	const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
-	return ka.length === kb.length && ka.every((k) => sameJson((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
-}
-
-const same = (a: StoredAttempt, b: StoredAttempt) => a.actionId === b.actionId && sameJson(a.attempt, b.attempt);
+/** 同一個動作、那一次的內容一樣（物件不管鍵的先後，跟伺服器比 JSON 一樣）。 */
+const sameRecord = (a: StoredAttempt, b: StoredAttempt) => a.actionId === b.actionId && same(a.attempt, b.attempt);
 
 /**
  * 復原 of 那一步時給流程核心的紀錄（ADR 0007）：現在的紀錄，加上那一步清掉、到現在還清掉著的，
@@ -250,7 +235,7 @@ function broughtBack(all: RoomRecord[], of: LoggedStep, live: StoredAttempt[]) {
 		if (was && !now && current.gone) {
 			revived.push(current.attempt.id);
 			added.push(was);
-		} else if (now && !current.gone && same(current, now)) {
+		} else if (now && !current.gone && sameRecord(current, now)) {
 			swap.set(current.attempt.id, was);
 		}
 	}
@@ -317,7 +302,7 @@ function recordsAfter(all: RoomRecord[], before: StoredAttempt[], after: StoredA
 			set(id, null);
 			deleted.push(id);
 			was.set(id, old);
-		} else if (!same(r, old)) {
+		} else if (!sameRecord(r, old)) {
 			was.set(id, old);
 			if (collides(r)) {
 				set(id, null);

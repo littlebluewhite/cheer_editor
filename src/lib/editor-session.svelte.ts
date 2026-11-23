@@ -19,7 +19,6 @@ import {
 	type CommandName,
 	type CommandOutcome,
 	type Flow,
-	type Mark,
 	type MoveResult,
 	type Period,
 	type Position,
@@ -34,6 +33,7 @@ import { whyText, joinText } from '#lib/reason-text.js';
 import { both, KEYS } from '#lib/shortcuts.js';
 import { LocalUndo, type UndoLog } from '#lib/undo-log.svelte.js';
 import { BeatSelection } from './beat-selection.svelte.js';
+import { DrillAttempts } from './drill-attempts.svelte.js';
 
 /** 幾句提示接成一則（中文用「；」）。parts 不能是空的。 */
 export const joinNotes = (parts: string[]): string => parts.reduceRight((rest, first) => m.session_notes({ first, rest }));
@@ -171,29 +171,8 @@ export class EditorSession {
 	get editable(): boolean {
 		return !this.viewing;
 	}
-	/**
-	 * 記錄頁每張卡上次選的「這次練」，key 是「動作 id 組或隊員 id」：whole 整個做，不是就只練 picked 這幾個環節。
-	 * 換動作、切頁（卡不見了）再回來還是它；換一支流程就清掉；不存進流程檔。
-	 */
-	drillScopes: Record<string, { whole: boolean; picked: string[] }> = $state({});
-	/**
-	 * 記錄頁每張卡點了還沒存的記號（環節 id → 記號），key 是 drillScopes 的 key 加上日期（一天一份）。
-	 * 換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。
-	 */
-	drillMarks: Record<string, Record<string, Mark>> = $state({});
-	/**
-	 * 記錄頁一張卡（動作、組或隊員 who）這一天點了還沒存的記號：
-	 * 不是這次要練的環節（在編排刪掉了、別天改成只練別的環節）的記號不算。卡上和左邊動作清單都看它標「還沒存」。
-	 */
-	unsavedMarks(action: Action, who: string, date: string): Record<string, Mark> {
-		const scopeKey = `${action.id} ${who}`;
-		const scope = this.drillScopes[scopeKey] ?? { whole: true, picked: [] };
-		const phases = action.successRate?.phases ?? [];
-		const whole = scope.whole || phases.length < 2;
-		const planned = whole ? phases : phases.filter((p) => scope.picked.includes(p.id));
-		const marks = this.drillMarks[`${scopeKey} ${date}`] ?? {};
-		return Object.fromEntries(Object.entries(marks).filter(([id]) => planned.some((p) => p.id === id)));
-	}
+	/** 記錄頁每張卡分段練正在記的一次（這次練、點了還沒存的記號）：換動作、切頁再回來還在；換一支流程就清掉；不存進流程檔。 */
+	readonly drill = new DrillAttempts((text) => (this.notice = text));
 	/**
 	 * 練習畫面切頁（記錄、總表、編排）之前要先問的：全上表改過格子時由它接上，問了、教練選丟掉才 go()。沒有就直接切。
 	 * 不存進流程檔。
@@ -547,10 +526,7 @@ export class EditorSession {
 			this.#copied = null;
 			this.clearSelection();
 			// 同一支換成最新的（離線副本、被新版擋住時，#368）：記錄頁點了還沒存的記號、練哪幾個環節留著
-			if (swap.switched || !flow) {
-				this.drillMarks = {};
-				this.drillScopes = {};
-			}
+			if (swap.switched || !flow) this.drill.clear();
 			this.view = freshView();
 			this.notice = '';
 			this.#clearAsks();

@@ -141,7 +141,7 @@
 
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
-	onMount(() => void home.load(isOnline));
+	onMount(() => void home.load());
 	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。 */
 	const webUpdate = followWebUpdate(host().shell, () => !session.flow && !editor.hasUnsavedWork);
 	onMount(() => webUpdate.stop);
@@ -165,25 +165,15 @@
 	// 在首頁時（打開、回到首頁、網路換了）拿首頁要列的；離開首頁之後才回來的不算。
 	$effect(() => {
 		if (!account || flow) return;
-		return home.refresh(online);
+		return home.refresh();
 	});
 
-	/** 有沒有網路（瀏覽器說的）：沒網路時新建不能存在雲端。 */
-	const isOnline = () => typeof navigator === 'undefined' || navigator.onLine;
-	let online = $state(isOnline());
+	/** 有沒有網路（瀏覽器說的，編輯器 module 握著）：沒網路時新建不能存在雲端。 */
+	const online = $derived(editor.online);
 	/** 新建表單「存在」選哪個（登入時才有這格）：預設雲端；沒網路時自動選這台。 */
-	let saveTo = $state<'cloud' | 'here'>(isOnline() ? 'cloud' : 'here');
-	onMount(() => {
-		const changed = () => {
-			online = isOnline();
-			if (!online) saveTo = 'here';
-		};
-		window.addEventListener('online', changed);
-		window.addEventListener('offline', changed);
-		return () => {
-			window.removeEventListener('online', changed);
-			window.removeEventListener('offline', changed);
-		};
+	let saveTo = $state<'cloud' | 'here'>('cloud');
+	$effect.pre(() => {
+		if (!online) saveTo = 'here';
 	});
 	/** 新建表單建好了：登入、選存在雲端就請伺服器建一支打開它，不然跟以前一樣是本機流程。 */
 	function created(f: Flow) {

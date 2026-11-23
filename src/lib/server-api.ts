@@ -33,6 +33,7 @@ import type { UserRow } from '#lib/api-types/UserRow.js';
 import type { UserStatus } from '#lib/api-types/UserStatus.js';
 import { OLD_SITE } from '#lib/old-site.js';
 import { ASLEEP_CODE, CLOUD_ROOM_FEATURE, shellSocket, type RoomSocket } from '#lib/shell-socket.js';
+import { browserNetwork, type NetworkAdapter } from '#lib/network.js';
 import { m } from '#lib/paraglide/messages.js';
 
 export type {
@@ -241,8 +242,11 @@ async function r2Fetch(url: string, file?: File): Promise<Response> {
 	return fetch(viaShell, file ? { method: 'PUT', body: await file.arrayBuffer() } : undefined);
 }
 
-/** 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。舊網址版不連（noServer）。 */
-export function httpServer(base = ''): ServerAdapter {
+/**
+ * 真的：fetch 同一個網址的 /api/…。伺服器出錯、連不上丟 ServerUnreachable（me 例外：當作沒登入）。舊網址版不連（noServer）。
+ * 房間有沒有網路問 network（連上網路馬上再連、斷網自己關、斷線原因是斷網還是伺服器沒回應）。
+ */
+export function httpServer(base = '', network: NetworkAdapter = browserNetwork()): ServerAdapter {
 	if (OLD_SITE) return noServer();
 	async function post(path: string, body: unknown): Promise<Response> {
 		let res: Response;
@@ -448,23 +452,18 @@ export function httpServer(base = ''): ServerAdapter {
 				close() {
 					closed = true;
 					clearTimeout(timer);
-					window.removeEventListener('online', online);
-					window.removeEventListener('offline', offline);
+					stopListening();
 					stopWaking();
 					socket?.close();
 				}
 			};
-			/** 連上網路了：斷線的話馬上再連。 */
-			const online = () => room.retry();
-			/** 瀏覽器說斷網了：WebSocket 不一定馬上發現，自己關掉。 */
-			const offline = () => socket?.close();
-			window.addEventListener('online', online);
-			window.addEventListener('offline', offline);
+			// 連上網路了：斷線的話馬上再連。斷網了：WebSocket 不一定馬上發現，自己關掉。
+			const stopListening = network.onChange(() => (network.online() ? room.retry() : socket?.close()));
 			// App 回到前景（#381）：切到背景時殼關掉的連線馬上連回來
 			const stopWaking = host().shell.on('foreground', () => room.retry());
 			/** 斷了：問問看為什麼（斷網、登入過期、被收回、流程被刪了（410）、伺服器沒回應）。 */
 			const why = async (): Promise<RoomDown | 'revoked' | 'deleted'> => {
-				if (!navigator.onLine) return 'offline';
+				if (!network.online()) return 'offline';
 				try {
 					const me = await fetch(`${base}/api/me`);
 					if (me.status === 401) return 'expired';
@@ -473,7 +472,7 @@ export function httpServer(base = ''): ServerAdapter {
 					if (flow.status === 410) return 'deleted';
 					return flow.status === 404 ? 'revoked' : 'unreachable';
 				} catch {
-					return navigator.onLine ? 'unreachable' : 'offline';
+					return network.online() ? 'unreachable' : 'offline';
 				}
 			};
 			const connect = () => {

@@ -44,6 +44,7 @@
 	"flow_check_formation_order": "站位 {n} 要在站位 {before} 之後",
 	"flow_check_formation_same_beat": "站位 {n} 和站位 {other} 在同一拍",
 	"flow_check_formation_off_grid": "要在段的時間裡",
+	"flow_check_formation_opening": "開頭那張站位要在流程開頭",
 	"flow_check_twice": "同一個人只能放一次",
 	"flow_check_no_role": "沒有「{role}」這個任務角色",
 	"flow_check_clash": "{member} 同一時間在「{first}」和「{second}」裡",

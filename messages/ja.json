@@ -44,6 +44,7 @@
 	"flow_check_formation_order": "フォーメーション {n} はフォーメーション {before} より後にしてください",
 	"flow_check_formation_same_beat": "フォーメーション {n} と {other} が同じ拍にあります",
 	"flow_check_formation_off_grid": "パートの時間内にしてください",
+	"flow_check_formation_opening": "最初のフォーメーションはルーティーンの最初に置いてください",
 	"flow_check_twice": "同じ選手は 1 回しか入れられません",
 	"flow_check_no_role": "「{role}」というポジションはありません",
 	"flow_check_clash": "{member} が同じ時間に「{first}」と「{second}」の両方に入っています",

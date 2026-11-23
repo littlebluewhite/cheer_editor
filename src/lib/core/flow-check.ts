@@ -137,6 +137,10 @@ function violations(flow: Flow): Violation[] {
 		const ids = group.map((i) => flow.formations[i].id).sort();
 		add(`formationBeat:${ids.join(':')}`, { code: 'flow_check_formation_same_beat', n: group[1] + 1, other: group[0] + 1 });
 	}
+	// 開頭那張在流程開頭（第一段的開頭；沒有段時不在段裡的時間 0）：調段順序、刪段會跟著搬，
+	// 雲端復原、重做放回去的段順序可能跟開頭那張對不上（#346）。
+	const [opening] = flow.formations;
+	add('formationOpening', !opening || (opening.segmentId === (flow.segments[0]?.id ?? null) && opening.at === 0) ? null : { code: 'flow_check_formation_opening' });
 	// 不在段裡：照那一張（開頭那張不看）。
 	flow.formations.forEach((f, i) => {
 		if (i > 0) add(`formationGrid:${f.id}`, inGrid(flow, f as TimePosition) ? null : inFormation(i, { code: 'flow_check_formation_off_grid' }));

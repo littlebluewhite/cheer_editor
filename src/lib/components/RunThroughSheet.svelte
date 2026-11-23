@@ -1,25 +1,14 @@
 <script lang="ts">
 	// 記錄頁、總表的「＋ 記一次全上」打開的表（照台灣教練的全上表）：每個要記的動作一塊，照流程順序；一列一個環節，一欄一組。
-	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組按不了的環節（✗ 做完之後才開始的，問核心 blankPhases）變空的，佔同樣拍的留著；改回來，回到 ✓。
+	// 每格先是 ✓，教練只點出錯的地方：✓ → △ → ✗ → ✓。一格變 ✗，同一組按不了的環節（✗ 做完之後才開始的）變空的，佔同樣拍的留著；改回來，回到 ✓。
 	// 有個動作沒做，在它那裡按「這個沒做」：整個動作變空的，不存；中途停了，在第一個沒做的動作按「後面都沒做」，它和後面的一次變空的。
-	// 表上的東西只在這個元件裡，按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
+	// 格子的規則和表上的東西在 session.drill.runThrough 給的那張表（RunThroughTable），這個元件握著它、只畫、把點的傳進去；
+	// 按「存這次全上」才用 recordRunThrough 存進流程；「取消」什麼都不存（改過格子先問，切頁也一樣）。
 	// 雲端流程能記的人一起記（#262，ADR 0015）：開表就把全上 id、日期、開的時間和要拿的組報給伺服器（開新的拿全部的組，
 	// 加入的拿沒人拿著的，日期、開的時間用開的人的）。最上面一排「我記哪幾組」照組號跨動作一起選，騰翻、跳躍每個人一顆，
 	// 點一下拿來（別人還沒點過的能接手）或放掉；別人記的欄變灰、格子「—」，欄名下面寫誰在記；同一次全上別人先存了的欄也變灰。
 	// 一欄第一次點記號時告訴伺服器；只存自己記的欄；存好、取消就離開表。
-	import {
-		actionWhy,
-		attemptWhos,
-		blankPhases,
-		keptAttempt,
-		MARKS,
-		phaseWhy,
-		recordableActions,
-		type Action,
-		type Mark,
-		type Phase,
-		type RunThroughMarks
-	} from '#lib/core';
+	import { actionWhy, MARKS, phaseWhy, type Action, type Mark, type Phase } from '#lib/core';
 	import { getEditor } from '#lib/editor.svelte.js';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
 	import { whyText } from '#lib/reason-text.js';
@@ -60,9 +49,13 @@
 	/** 存好了交給 session 的「記」（紀錄不算復原的一步）。 */
 	const ask = session.recordAsk();
 
-	const NEXT: Record<Mark, Mark> = { '✓': '△', '△': '✗', '✗': '✓' };
+	/** 這張表正在記的（點過的格子、沒做的動作）；哪一欄是我記的由這裡告訴它。 */
+	const table = session.drill.runThrough(
+		() => session.flow!,
+		(action, who) => isMine(action, who)
+	);
 
-	const blocks = $derived(recordableActions(flow).map((action) => ({ action, whos: attemptWhos(flow, action) })));
+	const blocks = $derived(table.blocks);
 
 	/** 「我記哪幾組」的每一組。 */
 	const keys = $derived(runKeys(flow, blocks));
@@ -128,54 +121,15 @@
 	/** 每一組都有別人拿著、我一組都沒有。 */
 	const allTaken = $derived(!!together && !myKeys.length && keys.every((k) => holder(k)));
 
-	/** 教練點過的格子（key：動作|誰|環節）；沒點過的是 ✓。 */
-	let picked = $state<Record<string, Mark>>({});
-	/** 按了「這個沒做」的動作。 */
-	let skipped = $state<string[]>([]);
 	/** 按了取消，等教練確定要不要丟掉改過的格子。 */
 	let confirming = $state(false);
 	/** 改過格子、按過「沒做」：取消要先問。 */
-	const dirty = $derived(skipped.length > 0 || Object.values(picked).some((m) => m !== '✓'));
+	const dirty = $derived(table.dirty);
 
-	const key = (actionId: string, who: string, phaseId: string) => `${actionId}|${who}|${phaseId}`;
-
-	/** 一組在一個動作點過的記號，每個環節都有（沒點過的是 ✓）。 */
-	function tapped(action: Action, who: string): Record<string, Mark> {
-		return Object.fromEntries(action.successRate!.phases.map((p) => [p.id, picked[key(action.id, who, p.id)] ?? '✓']));
-	}
-
-	/** 一組在一個動作的記號，照環節順序，是會存下來的樣子（問核心 keptAttempt，存的時候也照它）：按不了的環節（blankPhases 的 shut）、沒做的動作是空的（null），跟 ✗ 佔同樣拍的照點的留著。 */
-	function column(action: Action, who: string): (Mark | null)[] {
-		const phaseIds = action.successRate!.phases.map((p) => p.id);
-		if (skipped.includes(action.id)) return phaseIds.map(() => null);
-		const kept = keptAttempt(action, true, tapped(action, who)).marks;
-		return phaseIds.map((id) => kept[id] ?? null);
-	}
-
-	/** 點一格換下一個記號；變 ✗ 就把同一組空著的環節點過的清掉（核心 blankPhases 說哪些；改回來時是 ✓）。 */
-	function tap(action: Action, who: string, phaseId: string, mark: Mark) {
+	/** 點一格換下一個記號（一起記全上時告訴伺服器這一欄點過了）。 */
+	function tap(action: Action, who: string, phaseId: string) {
 		together?.touch(runKey(action, who));
-		const next = NEXT[mark];
-		picked[key(action.id, who, phaseId)] = next;
-		if (next !== '✗') return;
-		for (const id of blankPhases(action, true, tapped(action, who)).shut) delete picked[key(action.id, who, id)];
-	}
-
-	function toggleSkip(actionId: string) {
-		skipped = skipped.includes(actionId) ? skipped.filter((id) => id !== actionId) : [...skipped, actionId];
-	}
-
-	/** 第 index 個動作和它後面的動作 id。 */
-	const after = (index: number) => blocks.slice(index).map((b) => b.action.id);
-	/** 這個和後面的動作都按了沒做。 */
-	const restSkipped = (index: number) => after(index).every((id) => skipped.includes(id));
-
-	/** 「後面都沒做」：這個和後面的動作都變沒做；已經都沒做就都回來。 */
-	function toggleRest(index: number) {
-		const rest = after(index);
-		skipped = restSkipped(index)
-			? skipped.filter((id) => !rest.includes(id))
-			: [...skipped, ...rest.filter((id) => !skipped.includes(id))];
+		table.tap(action, who, phaseId);
 	}
 
 	function cancel() {
@@ -206,13 +160,7 @@
 	}
 
 	/** 要存的：沒按「沒做」的動作裡、我記的欄。 */
-	const entries: RunThroughMarks[] = $derived(
-		blocks
-			.filter(({ action }) => !skipped.includes(action.id))
-			.flatMap(({ action, whos }) =>
-				whos.filter(({ who }) => isMine(action, who)).map(({ who }) => ({ actionId: action.id, who, marks: tapped(action, who) }))
-			)
-	);
+	const entries = $derived(table.entries);
 
 	function save() {
 		const id = together ? run.id : undefined;
@@ -256,14 +204,14 @@
 
 	{#each blocks as { action, whos }, index (action.id)}
 		{@const phases = action.successRate?.phases ?? []}
-		{@const off = skipped.includes(action.id)}
-		{@const columns = whos.map((w) => ({ ...w, marks: column(action, w.who), mine: isMine(action, w.who) }))}
+		{@const off = table.skipped(action.id)}
+		{@const columns = whos.map((w) => ({ ...w, marks: table.column(action, w.who), mine: isMine(action, w.who) }))}
 		<section class="block" class:off aria-label={whyText(actionWhy(action))}>
 			<div class="head">
 				<h4><span class="swatch" style:--c={actionColor(action)}></span>{whyText(actionWhy(action))}</h4>
-				<button type="button" class="stop" aria-pressed={off} onclick={() => toggleSkip(action.id)}>{t.run_through_not_done()}</button>
+				<button type="button" class="stop" aria-pressed={off} onclick={() => table.toggleSkip(action.id)}>{t.run_through_not_done()}</button>
 				{#if index < blocks.length - 1}
-					<button type="button" class="stop" aria-pressed={restSkipped(index)} onclick={() => toggleRest(index)}
+					<button type="button" class="stop" aria-pressed={table.restSkipped(action.id)} onclick={() => table.toggleRest(action.id)}
 						>{t.run_through_rest_not_done()}</button
 					>
 				{/if}
@@ -294,7 +242,7 @@
 												class="slot {m === '✓' ? 'ok' : m === '△' ? 'minor' : m === '✗' ? 'fail' : ''}"
 												aria-label="{whyText(col.name)} {phaseText(p)} {markLabel(m)}"
 												disabled={m === null}
-												onclick={() => m && tap(action, col.who, p.id, m)}>{m ?? ''}</button
+												onclick={() => tap(action, col.who, p.id)}>{m ?? ''}</button
 											>
 										{:else}
 											<button

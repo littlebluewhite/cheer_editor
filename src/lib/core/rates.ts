@@ -9,7 +9,7 @@ import type { Action } from './action-types';
 import type { Flow } from './flow';
 import { attemptText, attemptWhos } from './records';
 import type { Phase } from './phase-types';
-import type { Attempt, PracticeKind } from './success-rate';
+import { phasesThen, type Attempt, type PracticeKind } from './success-rate';
 import type { WhyParam } from './why';
 
 /** 一個環節的次數：✓、△、✗ 各幾次，和有打記號的次數（空的不算）。 */
@@ -69,11 +69,10 @@ export function rateCounts(phases: Phase[], attempts: Attempt[]): RateCounts {
 			else if (mark === '△') t.minor++;
 			else t.fail++;
 		}
-		// 當時就有、現在還在的環節：打了記號的，加上空著的（blanks）。
-		const phasesThen = phases.filter((p) => a.marks[p.id] || a.blanks?.includes(p.id));
-		if (a.whole && phasesThen.length) {
+		const then = phasesThen(phases, a);
+		if (a.whole && then.length) {
 			counts.whole.whole++;
-			if (phasesThen.every((p) => a.marks[p.id] === '✓')) counts.whole.clean++;
+			if (then.every((p) => a.marks[p.id] === '✓')) counts.whole.clean++;
 		}
 	}
 	return counts;

@@ -295,24 +295,6 @@ async fn a_recording_is_saved_with_who_recorded_it_and_others_see_it_right_away(
 }
 
 #[sqlx::test]
-async fn the_same_id_twice_is_one_record(db: sqlx::PgPool) {
-    let s = Server::new(db).await;
-    let wang = s.user("wang@example.com", "王教練").await;
-    let id = s.sample(&wang, &[]).await;
-    let (mut phone, _) = s.join(&wang, &id).await;
-    let one = drill("tabc123def456", SQUAD_1, json!({ LOAD: "✓" }));
-
-    let first = record(&mut phone, json!([one, one])).await;
-    // 斷線重連後重送：回存著的那一筆，不變兩筆。
-    let (mut again, _) = s.join(&wang, &id).await;
-    let second = record(&mut again, json!([one])).await;
-
-    assert_eq!(first["saved"].as_array().unwrap().len(), 1);
-    assert_eq!(first["saved"], second["saved"]);
-    assert_eq!(s.rows(&id).await.len(), 1);
-}
-
-#[sqlx::test]
 async fn a_resend_returns_only_the_resent_records(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;
@@ -529,32 +511,6 @@ async fn deleting_a_phase_with_records_trims_the_stored_marks(db: sqlx::PgPool) 
 }
 
 #[sqlx::test]
-async fn two_people_drilling_the_same_squad_both_count(db: sqlx::PgPool) {
-    let s = Server::new(db).await;
-    let lin = s.user("lin@example.com", "林教練").await;
-    let wang = s.user("wang@example.com", "王教練").await;
-    let id = s.sample(&wang, &[(&lin, "editor")]).await;
-    let (mut a, _) = s.join(&wang, &id).await;
-    let (mut b, _) = s.join(&lin, &id).await;
-
-    record(
-        &mut a,
-        json!([drill("tfromwang0010", SQUAD_1, json!({ LOAD: "✓" }))]),
-    )
-    .await;
-    hear(&mut b).await;
-    record(
-        &mut b,
-        json!([drill("tfromlin00010", SQUAD_1, json!({ LOAD: "✓" }))]),
-    )
-    .await;
-
-    let got = s.records(&wang, &id).await;
-    assert_eq!(ids(&got), vec!["tfromwang0010", "tfromlin00010"]);
-    assert_eq!(got[1]["by"], "林教練");
-}
-
-#[sqlx::test]
 async fn a_viewer_cannot_record_but_a_recorder_can(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let rec = s.user("rec@example.com", "記錄者").await;
@@ -591,6 +547,49 @@ async fn a_viewer_cannot_record_but_a_recorder_can(db: sqlx::PgPool) {
     // 檢視者看得到（總表）。
     assert_eq!(ids(&s.records(&view, &id).await), vec!["trecorder0010"]);
     assert_eq!(s.rows(&id).await.len(), 1);
+}
+
+#[sqlx::test]
+async fn a_record_sent_after_the_flow_was_deleted_is_answered_deleted(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut phone, _) = s.join(&wang, &id).await;
+
+    // 剛被刪、房間還沒說之前送到的：伺服器鎖那一列時找不到流程
+    sqlx::query("DELETE FROM flows WHERE id = $1")
+        .bind(&id)
+        .execute(&s.state.db)
+        .await
+        .unwrap();
+    let one = drill("tlate11111110", SQUAD_1, json!({ LOAD: "✓" }));
+    assert_eq!(
+        record(&mut phone, json!([one])).await,
+        json!({ "kind": "deleted" })
+    );
+}
+
+#[sqlx::test]
+async fn a_batch_the_flow_core_cannot_read_is_dropped_with_a_sentence(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut phone, _) = s.join(&wang, &id).await;
+    let good = drill("tgood11111110", SQUAD_1, json!({ LOAD: "✓" }));
+    let mut bad = drill("tbad222222220", SQUAD_1, json!({ LOAD: "✗" }));
+    bad["attempt"]["blanks"] = json!(3);
+
+    // 流程核心看不懂（空著的環節不是陣列）：這一批都不收，寫中文句子
+    let reply = record(&mut phone, json!([good, bad])).await;
+    assert_eq!(reply["saved"], json!([]));
+    assert_eq!(
+        reply["dropped"],
+        json!([
+            { "id": "tgood11111110", "message": "伺服器看不懂這一筆" },
+            { "id": "tbad222222220", "message": "伺服器看不懂這一筆" },
+        ])
+    );
+    assert_eq!(s.rows(&id).await.len(), 0);
 }
 
 /// 改幾次的記號（送手機上改好的那幾次），回伺服器的回答。
@@ -651,6 +650,28 @@ fn marks_of<'a>(records: &'a Value, phase: &str) -> Vec<&'a Value> {
         .collect()
 }
 
+/// 接線：沒有記的人（recorded_by 是 NULL）傳給流程核心是沒帶 by，回給前端的 by 是 null（規則的表格在 room-records.test.ts）。
+#[sqlx::test]
+async fn only_editors_and_the_owner_can_touch_records_with_no_recorder(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let rec = s.user("rec@example.com", "記錄者").await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
+    let filed = drill("tfile33333330", SQUAD_2, json!({ LOAD: "✓" }));
+    from_file(&s, &id, &filed).await;
+
+    let (mut phone, _) = s.join(&rec, &id).await;
+    delete(&mut phone, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await.len(), 1);
+
+    let (mut coach, _) = s.join(&wang, &id).await;
+    let reply = change(&mut coach, json!([remarked(&filed, json!({ LOAD: "△" }))])).await;
+    assert_eq!(reply["saved"][0]["attempt"]["marks"], json!({ LOAD: "△" }));
+    assert_eq!(reply["saved"][0]["by"], Value::Null);
+    delete(&mut coach, json!(["tfile33333330"])).await;
+    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
+}
+
 #[sqlx::test]
 async fn a_recorder_cannot_change_or_delete_others_records_but_an_editor_can(db: sqlx::PgPool) {
     let s = Server::new(db).await;
@@ -705,27 +726,6 @@ async fn a_recorder_cannot_change_or_delete_others_records_but_an_editor_can(db:
     let reply = delete(&mut editor, json!(["tfile33333330", "trec222222220"])).await;
     assert_eq!(reply["saved"], json!([]));
     assert_eq!(ids(&s.records(&wang, &id).await), vec!["twang11111110"]);
-}
-
-#[sqlx::test]
-async fn only_editors_and_the_owner_can_touch_records_with_no_recorder(db: sqlx::PgPool) {
-    let s = Server::new(db).await;
-    let rec = s.user("rec@example.com", "記錄者").await;
-    let wang = s.user("wang@example.com", "王教練").await;
-    let id = s.sample(&wang, &[(&rec, "recorder")]).await;
-    let filed = drill("tfile33333330", SQUAD_2, json!({ LOAD: "✓" }));
-    from_file(&s, &id, &filed).await;
-
-    let (mut phone, _) = s.join(&rec, &id).await;
-    delete(&mut phone, json!(["tfile33333330"])).await;
-    assert_eq!(s.records(&wang, &id).await.len(), 1);
-
-    let (mut coach, _) = s.join(&wang, &id).await;
-    let reply = change(&mut coach, json!([remarked(&filed, json!({ LOAD: "△" }))])).await;
-    assert_eq!(reply["saved"][0]["attempt"]["marks"], json!({ LOAD: "△" }));
-    assert_eq!(reply["saved"][0]["by"], Value::Null);
-    delete(&mut coach, json!(["tfile33333330"])).await;
-    assert_eq!(s.records(&wang, &id).await, Vec::<Value>::new());
 }
 
 #[sqlx::test]
@@ -1314,7 +1314,10 @@ async fn hear(socket: &mut Socket) -> Value {
             match socket.next().await {
                 Some(Ok(Message::Text(text))) => {
                     let message: Value = serde_json::from_str(&text).unwrap();
-                    if message["kind"] != "present" && message["kind"] != "changed" {
+                    if message["kind"] != "present"
+                        && message["kind"] != "changed"
+                        && message["kind"] != "runThroughs"
+                    {
                         return message;
                     }
                 }

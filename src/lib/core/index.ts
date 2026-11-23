@@ -83,7 +83,7 @@ export {
 } from './cues';
 export type { Cue, CueKind, LiveCues, NewCueInput, Who } from './cues';
 
-export { blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadNumber, squadsOf, squadWhy } from './success-rate';
+export { attemptEdit, blankPhases, fillOk, groupsPeople, keptAttempt, MARKS, perPerson, pickedAutoSave, squadBadge, squadNumber, squadsOf, squadWhy } from './success-rate';
 export type { Attempt, Mark, NewAttempt, PracticeKind, SquadBadge, SuccessRate } from './success-rate';
 
 export {
@@ -334,4 +334,29 @@ export { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
 export type { UndoChanges, UndoOutcome } from './cloud-undo';
 export { KEPT_DAYS, takeStep } from './room-step';
 export type { ClearedRecord, LoggedStep, RoomRecord, SentStep, StepAsk, StepRefusal, StepVerdict } from './room-step';
+export { amendRecords, receiveRecords } from './room-records';
+export type {
+	AmendAsk,
+	AmendOutcome,
+	AmendRole,
+	AmendSent,
+	KnownRecord,
+	RecordRefusal,
+	RecordsAsk,
+	RecordVerdict
+} from './room-records';
+export { GONE_MS, runTogether, runViews } from './run-together';
+export type {
+	RunAnswer,
+	RunAsk,
+	RunEvent,
+	RunOutcome,
+	RunReport,
+	RunsTogether,
+	RunTogetherView,
+	RunWho,
+	TogetherHold,
+	TogetherPerson,
+	TogetherRun
+} from './run-together';
 export { travelChange, travelOrder } from './undo-order';

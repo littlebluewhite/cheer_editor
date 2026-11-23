@@ -1,14 +1,12 @@
 <script lang="ts">
 	// 記錄頁的一張卡：一組（騰翻、跳躍的動作是一個人）記分段練。
 	// 每個環節三顆大按鈕 ✓ △ ✗；再按一次點著的那顆就取消。
-	// 「整個」：點好按「存這一次」才存（存成核心 keptAttempt 給的樣子；哪些環節按不了，問核心 blankPhases，「只練幾個環節」也一樣）；
-	// 「全部 ✓ 存」已點的照點的存，還能打、沒打的補 ✓。跳過了前面的環節（也問 blankPhases），存之前就提醒。
-	// 只有一個環節：點了記號就存。
-	// 「只練幾個環節」：點到最後一個要練的環節、或點了 ✗，就自動存成一次（卡上寫一行怎麼用；點環節那一列的空白處也能勾）。
-	// 還有勾了、沒打、跟它佔同樣拍的環節就先不存（問核心 pickedAutoSave）：卡上多一顆「存這一次」、提示寫為什麼在等，打完自動存。
-	// 點到一半的記號還沒進流程，跟「這次練」的選擇一樣留在 session：換動作、換頁再回來還在，卡上標「還沒存」。
+	// 正在記的這一次（這次練、點了還沒存的記號、留哪些、哪些按不了、什麼時候存）都在 session.drill，卡片只畫、把點的傳進去：
+	// 「整個」點好按「存這一次」才存，「全部 ✓ 存」補 ✓，跳過了前面的環節存之前就提醒；只有一個環節點了就存；
+	// 「只練幾個環節」點到最後一個要練的環節、或點了 ✗ 就自動存（卡上寫一行怎麼用；點環節那一列的空白處也能勾），
+	// 還在等同時在做的環節時，卡上多一顆「存這一次」、提示寫為什麼在等。換動作、換頁再回來還在，卡上標「還沒存」。
 	// 下面一排是這天的每一次，全上記的用虛線框、只練幾個環節的用淡色框分出來，雲端流程還沒傳上去的後面黃色「沒傳」（#260）；「刪掉上一次」只刪這張卡記的分段練，刪了幾秒內可以救回（提示寫出刪了哪一次；提示走編輯器唯一的提示，不在卡上）。
-	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號，或只刪掉那一次（也可以救回）。
+	// 點那一排裡的某一次（全上記的也一樣）可以改它的記號（改到一半的記號、按不了的環節問 session.drill 給的那一份），或只刪掉那一次（也可以救回）。
 	// 雲端流程別人記的那一次，記號後面小字寫名字（自己記的不寫，#257）。
 	// 雲端流程（#258）：「刪掉上一次」寫成「刪掉我的上一次」，只刪自己記的（編輯者也是）；記錄者點別人記的那一次只看得到是誰記的，不能改、刪。
 	import {
@@ -16,18 +14,14 @@
 		NOT_YET_MARK,
 		NOT_YET_TITLE,
 		attemptText,
-		blankPhases,
-		fillOk,
-		keptAttempt,
 		phaseColor,
 		phaseWhy,
-		pickedAutoSave,
 		type Action,
 		type Attempt,
-		type Mark,
 		type Phase
 	} from '#lib/core';
 	import { getEditorSession } from '#lib/editor-session.svelte.js';
+	import type { AttemptEdit } from '#lib/drill-attempts.svelte.js';
 	import { whyText, joinText } from '#lib/reason-text.js';
 	import { m as t } from '#lib/paraglide/messages.js';
 	import { removeWithRestore } from './record-notice';
@@ -53,126 +47,35 @@
 	/** 記一次、刪掉上一次、救回：紀錄改了交給 session 的「記」（不算復原的一步）。 */
 	const ask = session.recordAsk();
 
-	/** 這張卡的「這次練」在 session 裡的 key。 */
-	const scopeKey = $derived(`${action.id} ${who}`);
-	/** 這次練：整個做（whole），或只練幾個環節（picked 是要練的環節 id）。換下一次、換動作、切頁都留著。 */
-	const scope = $derived(session.drillScopes[scopeKey] ?? { whole: true, picked: [] });
-	/** 只有一個環節就是整個做（選「整個／只練幾個環節」的地方不見了，之前選的不算）。 */
-	const whole = $derived(scope.whole || (action.successRate?.phases.length ?? 0) < 2);
-	const picked = $derived(scope.picked);
+	/** 這張卡正在記的一次（這次練、點了還沒存的記號、什麼時候存都在 session.drill；換動作、切頁再回來還在）。 */
+	const drill = $derived(session.drill.card(action, who, date, ask));
 	const phases = $derived(action.successRate?.phases ?? []);
-	/** 這張卡這一天點的記號在 session 裡的 key（換日期是另一份）。 */
-	const marksKey = $derived(`${scopeKey} ${date}`);
+	const whole = $derived(drill.whole);
+	const picked = $derived(drill.picked);
 	/** 這一次要練的環節，照順序。 */
-	const planned = $derived(whole ? phases : phases.filter((p) => picked.includes(p.id)));
-	/** 這一次已經點的記號（還沒存）：留在 session，換動作、換頁再回來還在；不是這次要練的環節的記號不算。 */
-	const marks = $derived(session.unsavedMarks(action, who, date));
-	function setMarks(next: Record<string, Mark>) {
-		session.drillMarks[marksKey] = next;
-		if (!Object.keys(next).length) trigger = undefined;
-	}
-	/** 只練幾個環節時最近一次到存的時機點的環節（✗ 或最後一個勾的）：等的是跟它佔同樣拍的（問核心 pickedAutoSave）。 */
-	let trigger = $state<string | undefined>();
-	/** 會存下來的樣子（核心決定留哪些記號、哪些環節空著、跳過了哪些）。 */
-	const kept = $derived(blankPhases(action, whole, marks));
+	const planned = $derived(drill.planned);
 	/** 卡上亮的記號。 */
-	const shown = $derived(kept.marks);
+	const shown = $derived(drill.shown);
 	/** 按不了的環節（按鈕停用）：✗ 做完之後才開始的。整個做、只練幾個環節都一樣。 */
-	const shut = $derived(kept.shut);
-	/** 選「整個」卻跳過前面的環節：存之前就說。 */
-	const skipping = $derived(kept.skipped.length > 0);
-	/** 只練幾個環節、到了存的時機，還有同時在做的環節沒打：先不存，等它們打完（點到一半的記號留在 session，換頁回來還在等）。 */
-	const waiting = $derived(!whole && pickedAutoSave(action, picked, shown, trigger).waiting.length > 0);
+	const shut = $derived(drill.shut);
+	/** 只練幾個環節、到了存的時機，還有同時在做的環節沒打：先不存，等它們打完。 */
+	const waiting = $derived(drill.waiting.length > 0);
 	/** 這組在這一天的每一次（分段練和全上），照記的先後。 */
 	const today = $derived((action.successRate?.records ?? []).filter((r) => r.who === who && r.date === date));
-
-	function setWhole(value: boolean) {
-		session.drillScopes[scopeKey] = { whole: value, picked };
-		setMarks({});
-	}
-
-	function pick(id: string, on: boolean) {
-		session.drillScopes[scopeKey] = { whole, picked: on ? [...picked, id] : picked.filter((p) => p !== id) };
-		setMarks({});
-	}
 
 	/** 只練幾個環節時點那一列的空白處（不是勾選框、名字、能按的記號）：跟點勾選框一樣。 */
 	function pickRow(e: MouseEvent, id: string) {
 		if (whole || (e.target as Element).closest('label, button:enabled')) return;
-		pick(id, !picked.includes(id));
+		drill.pick(id, !picked.includes(id));
 	}
 
-	/**
-	 * 點一個記號；再點一次點著的那顆就取消。只有一個環節、或只練幾個環節時點到最後一個要練的環節、點了 ✗，就存
-	 * （只練幾個環節還有同時在做的沒打就先等）。
-	 * 只存會留下來的記號：「整個」點了 ✗，後面點過的就丟掉，取消 ✗ 也不會再冒出來。
-	 */
-	function tap(phaseId: string, mark: Mark) {
-		session.notice = '';
-		if (shown[phaseId] === mark) {
-			const { [phaseId]: _, ...rest } = shown;
-			setMarks(rest);
-			return;
-		}
-		setMarks(keptAttempt(action, whole, { ...shown, [phaseId]: mark }).marks);
-		if (phases.length === 1) return save();
-		if (whole) return;
-		if (mark === '✗' || phaseId === planned.at(-1)?.id) trigger = phaseId;
-		const next = pickedAutoSave(action, picked, { ...shown, [phaseId]: mark }, trigger);
-		if (next.due && !next.waiting.length) save();
-	}
-
-	/** 存這一次（留哪些記號、算不算整個做由核心決定）；給了 next 就存它，不看點了的。 */
-	function save(next = marks) {
-		setMarks({});
-		ask.send({ name: 'recordAttempt', args: [action.id, { date, who, practice: 'drill', whole, marks: next }] }, {
-			done: () => (session.notice = t.practice_saved())
-		});
-	}
-
-	/** 點了這天的哪一次在改（id）；沒有是 null。 */
-	let editing = $state<string | null>(null);
-	/** 改的那一次現在的記號（還沒存）。 */
-	let draft = $state<Record<string, Mark>>({});
+	/** 正在改的這一次（session.drill 給的一份，卡片握著；收起來、換頁、換動作就丟，不存）；沒在改是 null。 */
+	let edit = $state<AttemptEdit | null>(null);
 	/** 改的那一次（紀錄被別的地方拿掉了就收起來）。 */
-	const edited = $derived(today.find((r) => r.id === editing));
+	const edited = $derived(edit && today.find((r) => r.id === edit!.id));
 
 	function openEdit(attempt: Attempt) {
-		editing = editing === attempt.id ? null : attempt.id;
-		draft = { ...attempt.marks };
-	}
-
-	/**
-	 * 改的時候算 ✗ 的規則用的動作：整個做的一次只有那時就有的環節（打了記號的加上空著的，跟核心 changedAttempt 一樣），
-	 * 之後才加的不算進去，免得它的 ✗ 清掉存著的記號。
-	 */
-	const editAction = $derived.by(() => {
-		const rate = action.successRate;
-		if (!edited?.whole || !rate) return action;
-		const then = rate.phases.filter((p) => edited.marks[p.id] || edited.blanks?.includes(p.id));
-		return { ...action, successRate: { ...rate, phases: then } };
-	});
-	/** 改的時候按不了的環節：之後才加的，和跟記一次一樣 ✗ 做完之後才開始的（問核心 blankPhases）。 */
-	const editShut = $derived([
-		...phases.filter((p) => !editAction.successRate?.phases.includes(p)).map((p) => p.id),
-		...blankPhases(editAction, false, draft).shut
-	]);
-
-	/** 改的時候點記號：再點一次點著的那顆就變空的。點了 ✗，按不了的環節點過的記號不留（跟記一次一樣）。 */
-	function retap(phaseId: string, mark: Mark) {
-		if (draft[phaseId] === mark) {
-			const { [phaseId]: _, ...rest } = draft;
-			draft = rest;
-		} else draft = blankPhases(editAction, false, { ...draft, [phaseId]: mark }).marks;
-	}
-
-	function saveEdit(attempt: Attempt) {
-		ask.send({ name: 'changeAttempt', args: [action.id, attempt.id, draft] }, {
-			done: () => {
-				editing = null;
-				session.notice = t.practice_changed();
-			}
-		});
+		edit = edit?.id === attempt.id ? null : session.drill.edit(() => action, attempt.id, ask);
 	}
 
 	/** 刪掉這天的某一次的提示，例：已刪掉 ·✓（第 4 次）。 */
@@ -182,7 +85,7 @@
 	const phaseText = (p: Phase) => whyText(phaseWhy(p));
 
 	function removeEdited(attempt: Attempt) {
-		editing = null;
+		edit = null;
 		removeWithRestore(
 			ask,
 			session,
@@ -214,7 +117,7 @@
 <section class="card" aria-label={name}>
 	<header>
 		<div class="who">
-			<b>{name}{#if Object.keys(marks).length}<span class="unsaved">{t.practice_unsaved()}</span>{/if}</b>
+			<b>{name}{#if drill.unsaved}<span class="unsaved">{t.practice_unsaved()}</span>{/if}</b>
 			{#if people}<small>{joinText(people, t.practice_people)}</small>{/if}
 		</div>
 		<!-- 只有一個環節就沒得選，一定是整個做 -->
@@ -222,10 +125,10 @@
 			<div class="scope" role="radiogroup" aria-label={t.practice_scope_label({ name })}>
 				<span>{t.practice_scope()}</span>
 				<label
-					><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => setWhole(true)} />{t.practice_scope_whole()}</label
+					><input type="radio" name="scope-{action.id}-{who}" checked={whole} onchange={() => drill.setWhole(true)} />{t.practice_scope_whole()}</label
 				>
 				<label
-					><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => setWhole(false)} />{t.practice_some_phases()}</label
+					><input type="radio" name="scope-{action.id}-{who}" checked={!whole} onchange={() => drill.setWhole(false)} />{t.practice_some_phases()}</label
 				>
 			</div>
 		{/if}
@@ -242,7 +145,7 @@
 					<span class="phase-name"><span class="chip" style:--c={phaseColor(p)}></span>{phaseText(p)}</span>
 				{:else}
 					<label class="phase-name">
-						<input type="checkbox" checked={picked.includes(p.id)} onchange={(e) => pick(p.id, e.currentTarget.checked)} />
+						<input type="checkbox" checked={picked.includes(p.id)} onchange={(e) => drill.pick(p.id, e.currentTarget.checked)} />
 						<span class="chip" style:--c={phaseColor(p)}></span>{phaseText(p)}
 					</label>
 				{/if}
@@ -254,7 +157,7 @@
 							aria-label="{name} {phaseText(p)} {whyText(m.label)}"
 							aria-pressed={shown[p.id] === m.key}
 							disabled={!on}
-							onclick={() => tap(p.id, m.key)}>{m.key}</button
+							onclick={() => drill.tap(p.id, m.key)}>{m.key}</button
 						>
 					{/each}
 				</div>
@@ -265,15 +168,15 @@
 	<!-- 存檔鈕在右（靠近 ✓）。提示（已記下、已刪掉…救回）浮在練習畫面下方，不在卡上推動版面 -->
 	{#if whole && phases.length > 1}
 		<div class="save-row">
-			<button type="button" class="save" disabled={!Object.keys(marks).length} onclick={() => save()}>{t.practice_save_rep()}</button>
-			<button type="button" class="primary all-ok" onclick={() => save(fillOk(action, shown))}>{t.practice_save_all_ok()}</button>
+			<button type="button" class="save" disabled={!drill.unsaved} onclick={() => drill.save()}>{t.practice_save_rep()}</button>
+			<button type="button" class="primary all-ok" onclick={() => drill.saveAllOk()}>{t.practice_save_all_ok()}</button>
 		</div>
 	{:else if waiting}
 		<div class="save-row">
-			<button type="button" class="save" onclick={() => save()}>{t.practice_save_rep()}</button>
+			<button type="button" class="save" onclick={() => drill.save()}>{t.practice_save_rep()}</button>
 		</div>
 	{/if}
-	{#if skipping}<p class="hint-warn">{t.practice_skipping()}</p>{/if}
+	{#if drill.skipping}<p class="hint-warn">{t.practice_skipping()}</p>{/if}
 	{#if ask.error}<p class="error" {@attach revealAlert(ask.failures)}>{ask.error}</p>{/if}
 
 	<footer>
@@ -286,7 +189,7 @@
 					<li class:run class:partial={!r.whole} title={text.includes(NOT_YET_MARK) ? t.practice_kind_note({ kind, note: whyText(NOT_YET_TITLE) }) : kind}>
 						<button
 							type="button"
-							aria-expanded={editing === r.id}
+							aria-expanded={edit?.id === r.id}
 							aria-label={t.practice_edit_rep_kind({ n: i + 1, kind, marks: text })}
 							onclick={() => openEdit(r)}>{text}</button
 						>{#if session.practice.recordedBy[r.id]}<small class="by">{session.practice.recordedBy[r.id]}</small>{/if}{#if session.practice.unsentRecords.has(r.id)}<small
@@ -319,9 +222,9 @@
 								type="button"
 								class="mark {m.key === '✓' ? 'ok' : m.key === '△' ? 'minor' : 'fail'}"
 								aria-label={t.practice_rep_phase_mark({ n, phase: phaseText(p), mark: whyText(m.label) })}
-								aria-pressed={draft[p.id] === m.key}
-								disabled={editShut.includes(p.id)}
-								onclick={() => retap(p.id, m.key)}>{m.key}</button
+								aria-pressed={edit!.marks[p.id] === m.key}
+								disabled={edit!.shut.includes(p.id)}
+								onclick={() => edit!.tap(p.id, m.key)}>{m.key}</button
 							>
 						{/each}
 					</div>
@@ -333,8 +236,8 @@
 			{/if}
 			<div class="edit-row">
 				{#if !othersOnly}<button type="button" class="danger" onclick={() => removeEdited(edited)}>{t.practice_delete_rep()}</button>{/if}
-				<button type="button" onclick={() => (editing = null)}>{othersOnly ? t.practice_close_edit() : t.practice_cancel_edit()}</button>
-				{#if !othersOnly}<button type="button" class="primary" onclick={() => saveEdit(edited)}>{t.practice_save_edit()}</button>{/if}
+				<button type="button" onclick={() => (edit = null)}>{othersOnly ? t.practice_close_edit() : t.practice_cancel_edit()}</button>
+				{#if !othersOnly}<button type="button" class="primary" onclick={() => edit!.save(() => (edit = null))}>{t.practice_save_edit()}</button>{/if}
 			</div>
 		</div>
 	{/if}

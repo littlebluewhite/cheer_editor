@@ -15,9 +15,14 @@ const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, pas
 const newFlowOf = (name: string) => flowOf(createFlow({ name, field: { strips: 9, layout: 'vertical' } }));
 const at = (month: number, day: number, h: number, m: number) => new Date(2026, month - 1, day, h, m).toISOString();
 
-function signedIn(flows: FakeCloudFlow[] = [], drafts = fakeDraftStore()) {
+function signedIn(flows: FakeCloudFlow[] = [], drafts = fakeDraftStore(), online = true) {
 	const fake = fakeServer({ users: [lin, wang], signedIn: lin.email, flows });
 	const page = editorPage(null, { server: fake.server, draftStore: drafts.store });
+	if (!online) {
+		// 瀏覽器說斷網，可是問得到伺服器（還是登入著）
+		fake.network('offline');
+		fake.state.unreachable = false;
+	}
 	render(Page, page.props);
 	return { ...fake, page, drafts };
 }
@@ -28,11 +33,6 @@ async function create(name: string) {
 	await flush();
 	await flush();
 }
-
-const goOffline = (offline: boolean) => {
-	vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(!offline);
-	window.dispatchEvent(new Event(offline ? 'offline' : 'online'));
-};
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -100,8 +100,7 @@ describe('新建表單：存在雲端／這台', () => {
 	});
 
 	it('沒網路：雲端選不了、說原因、自動選這台；網路回來又能選', async () => {
-		goOffline(true);
-		signedIn();
+		const s = signedIn([], fakeDraftStore(), false);
 		await flush();
 		const where = screen.getByRole('group', { name: '存在' });
 		const cloud = within(where).getByRole('radio', { name: /^雲端/ }) as HTMLInputElement;
@@ -110,7 +109,7 @@ describe('新建表單：存在雲端／這台', () => {
 		expect((within(where).getByRole('radio', { name: /^這台/ }) as HTMLInputElement).checked).toBe(true);
 		expect(within(where).getByText('沒有網路，現在不能存在雲端')).toBeTruthy();
 
-		goOffline(false);
+		s.network('online');
 		await flush();
 		expect(cloud.disabled).toBe(false);
 	});

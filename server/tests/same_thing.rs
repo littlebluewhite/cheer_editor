@@ -215,7 +215,10 @@ async fn hear(socket: &mut Socket) -> Value {
             match socket.next().await {
                 Some(Ok(Message::Text(text))) => {
                     let message: Value = serde_json::from_str(&text).unwrap();
-                    if message["kind"] != "present" && message["kind"] != "changed" {
+                    if message["kind"] != "present"
+                        && message["kind"] != "changed"
+                        && message["kind"] != "runThroughs"
+                    {
                         return message;
                     }
                 }

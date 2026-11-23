@@ -1,7 +1,7 @@
 // 記一次全上的表：放一個真的 session 進去，點格子、存，讀 session 的流程。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import { pyramidSample, ratedSample } from '#lib/test-flows.js';
+import { ratedSample } from '#lib/test-flows.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
 import { testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
@@ -63,29 +63,22 @@ describe('記一次全上的表', () => {
 		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 成功');
 	});
 
-	it('點一格 ✓ → △ → ✗ → ✓；變 ✗ 同一組後面變空的，改回來後面回到 ✓', async () => {
+	// 格子的規則（換記號、變 ✗ 清掉哪些、沒做、改過、存哪些）在 src/lib/run-through-table.test.ts；這裡只看點了畫出來、按得到。
+	it('點一格畫出下一個記號；變空的格子寫「空的」、按不了', async () => {
 		setup();
 		await tapSlot('第 2 組 小芳', '下法');
 		expect(slot('第 2 組 小芳', '下法').getAttribute('aria-label')).toBe('第 2 組 小芳 下法 小失誤');
-		await tapSlot('第 2 組 小芳', '下法');
-		expect(slot('第 2 組 小芳', '下法').textContent?.trim()).toBe('✗');
-
 		await tapSlot('第 1 組 小美', '中段', 2);
 		expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✗', '']);
 		expect(slot('第 1 組 小美', '下法').getAttribute('aria-label')).toBe('第 1 組 小美 下法 空的');
-		expect(sheetRows('技巧·Lib').map((r) => r[2])).toEqual(['第 2 組 小芳', '✓', '✓', '✗']);
-
-		await tapSlot('第 1 組 小美', '中段');
-		expect(sheetRows('技巧·Lib').map((r) => r[1])).toEqual(['第 1 組 小美', '✓', '✓', '✓']);
+		expect(slot('第 1 組 小美', '下法').hasAttribute('disabled')).toBe(true);
 	});
 
-	it('「這個沒做」：整個動作變空的，再按一次回來', async () => {
+	it('「這個沒做」：按下去、整個動作變空的', async () => {
 		setup();
 		await fireEvent.click(stopped('騰翻'));
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
 		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '', '']);
-		await fireEvent.click(stopped('騰翻'));
-		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '✓', '✓']);
 	});
 
 	it('第 2 組下法點成 ✗、騰翻沒做，存：session 的流程裡 Lib 每組多一次全上，騰翻沒有；表關掉；不算復原的一步', async () => {
@@ -104,14 +97,6 @@ describe('記一次全上的表', () => {
 		expect(session.canUndo).toBe(false);
 	});
 
-	it('中段點成 ✗：存下來的那一次後面空著', async () => {
-		const { session } = setup();
-		await fireEvent.click(slot('第 1 組 小美', '中段'));
-		await fireEvent.click(slot('第 1 組 小美', '中段'));
-		await fireEvent.click(screen.getByRole('button', { name: '存這次全上' }));
-		expect(records(session, 0)[0].marks).toEqual({ p1: '✓', p2: '✗' });
-	});
-
 	it('每個動作都沒做：擋下來說原因，session 的流程不變，表還開著', async () => {
 		const { session, onclose } = setup();
 		const before = session.flow;
@@ -124,7 +109,7 @@ describe('記一次全上的表', () => {
 		expect(onclose).not.toHaveBeenCalled();
 	});
 
-	it('「這個沒做」和「後面都沒做」並排；「後面都沒做」：這個動作和後面的都變空的；再按一次回來', async () => {
+	it('「這個沒做」和「後面都沒做」並排；「後面都沒做」：這個動作和後面的都按下去、變空的', async () => {
 		setup();
 		const head = within(screen.getByRole('region', { name: '技巧·Lib' }));
 		const rest = () => head.getByRole('button', { name: '後面都沒做' });
@@ -135,9 +120,6 @@ describe('記一次全上的表', () => {
 		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('true');
 		expect(sheetRows('技巧·Lib')[1]).toEqual(['上法', '', '']);
 		expect(sheetRows('騰翻')[1]).toEqual(['翻法 騰翻', '', '']);
-		await fireEvent.click(rest());
-		expect(stopped('技巧·Lib').getAttribute('aria-pressed')).toBe('false');
-		expect(stopped('騰翻').getAttribute('aria-pressed')).toBe('false');
 	});
 
 	it('最後一個動作沒有「後面都沒做」', () => {
@@ -170,59 +152,5 @@ describe('記一次全上的表', () => {
 		await fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '丟掉' }));
 		expect(onclose).toHaveBeenCalledExactlyOnceWith(false);
 		expect(session.flow).toBe(before);
-	});
-
-	it('按了「這個沒做」也算改過', async () => {
-		const { onclose } = setup();
-		await fireEvent.click(stopped('騰翻'));
-		await fireEvent.click(screen.getByRole('button', { name: '取消' }));
-		expect(screen.getByRole('alertdialog')).toBeTruthy();
-		expect(onclose).not.toHaveBeenCalled();
-	});
-});
-
-describe('記一次全上的表：金字塔的環節佔同樣的拍', () => {
-	/** 畫 pyramidSample 的全上表，回傳金字塔那一塊第 1 組小美那一欄（環節、記號）。 */
-	function pyramidColumn() {
-		const { editor } = testEditor(pyramidSample());
-		render(TestSession, { props: { editor, component: RunThroughSheet, props: { date: DATE, onclose: vi.fn() } } });
-		const block = screen.getAllByRole('region').find((r) => r.getAttribute('aria-label')?.includes('金字塔'))!;
-		return () =>
-			within(block)
-				.getAllByRole('row')
-				.slice(1)
-				.map((row) => [row.children[0].textContent?.trim(), row.children[1].textContent?.trim()]);
-	}
-
-	it('一格變 ✗：之後才開始的格子變空的，佔同樣拍的留著；改回來，變空的回到 ✓', async () => {
-		const column = pyramidColumn();
-		await tapSlot('第 1 組 小美', '上法 第二個', 2);
-		expect(column()).toEqual([
-			['上法 第一個', '✓'],
-			['中段 第一個', '✓'],
-			['上法 第二個', '✗'],
-			['中段 第二個', ''],
-			['下法', '']
-		]);
-		await tapSlot('第 1 組 小美', '上法 第二個');
-		expect(column().map(([, mark]) => mark)).toEqual(['✓', '✓', '✓', '✓', '✓']);
-	});
-
-	it('✗ 之前點過的、之後才開始的格子：變空的時清掉，改回來是 ✓ 不是原來的 △', async () => {
-		const column = pyramidColumn();
-		await tapSlot('第 1 組 小美', '中段 第二個');
-		await tapSlot('第 1 組 小美', '上法 第二個', 2);
-		expect(column()[3]).toEqual(['中段 第二個', '']);
-		await tapSlot('第 1 組 小美', '上法 第二個');
-		expect(column()[3]).toEqual(['中段 第二個', '✓']);
-	});
-
-	it('✗ 之前點過的、佔同樣拍的格子：記號留著', async () => {
-		const column = pyramidColumn();
-		await tapSlot('第 1 組 小美', '中段 第一個');
-		await tapSlot('第 1 組 小美', '上法 第二個', 2);
-		expect(column()[1]).toEqual(['中段 第一個', '△']);
-		await tapSlot('第 1 組 小美', '上法 第二個');
-		expect(column()[1]).toEqual(['中段 第一個', '△']);
 	});
 });

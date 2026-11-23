@@ -7,6 +7,7 @@ import { swapHost, type Host, type SettingsStore, type Shell } from '#lib/host.j
 import { createFakeEngine } from '#lib/audio/fake-engine.js';
 import {
 	addAction,
+	amendRecords,
 	charCount,
 	addMembers,
 	addSegment,
@@ -14,22 +15,27 @@ import {
 	loadSegmentAudio,
 	addPhase,
 	checkFlowDocument,
-	checkRecord,
 	flowProblem,
+	GONE_MS,
 	problemKeys,
-	putRecords,
 	recordAttempt,
-	runCommands,
+	receiveRecords,
+	runTogether,
+	runViews as runViewsOf,
 	said,
 	takeRecords,
 	takeStep,
 	setSquad,
 	updateSegment,
+	type AmendSent,
 	type Command,
 	type Flow,
 	type LoggedStep,
 	type Position,
+	type RecordRefusal,
 	type RemoteChange,
+	type RunEvent,
+	type RunsTogether,
 	type StoredAttempt
 } from '#lib/core';
 import { CORE_FINGERPRINT } from '#lib/core-fingerprint.js';
@@ -44,6 +50,7 @@ import type { Measure } from '#lib/video/layout.js';
 import { domPendingInput, type PendingInput } from '#lib/pending-input.js';
 import { animationFrame } from '#lib/playback.svelte.js';
 import type { OpenTabChannel, TabMessage } from '#lib/tab-channel.js';
+import type { NetworkAdapter } from '#lib/network.js';
 import {
 	isEmptyUnsent,
 	readCopy,
@@ -67,7 +74,6 @@ import {
 	type Role,
 	type RoomMessage,
 	type RoomRequest,
-	type RunView,
 	type SentBack,
 	type ServerAdapter,
 	type UserStatus
@@ -300,6 +306,7 @@ export interface FakeCloudFlow {
  * 房間（openRoom）照真的規則收步：指紋不是 fingerprint 就說有新版；被擋、要問沒帶回答退回並帶原因和伺服器的樣子；
  * 步驟 id 收過回原本的結果。送進房間的下一個 microtask 才處理、回答；holdRoom 設成 true 就先留著，releaseRoom() 才處理。
  * 網路（#260）：network() 讓開著的房間斷網、伺服器沒回應、登入過期（斷線帶原因），或又連上（重新打招呼）。
+ * 它帶著自己的假網路 adapter 一起換（斷網沒網路，其他瀏覽器都說有網路）；testEditor 拿這個伺服器就接上那個網路 adapter。
  * 一步收不收（改到同一個東西 #254、復原重做 #256、權限、步驟 id 收過、30 天）交給流程核心的 takeStep，跟真的伺服器同一套規則；
  * 步驟紀錄的時間用 Date.now()（測試可以用假時鐘撥）。
  * 分享（#250）照真的規則：有權限的人才拿得到、連得上房間；記錄者、檢視者送的步退回；只有擁有者看得到別人的 email。
@@ -317,7 +324,7 @@ export interface FakeCloudFlow {
  * 成功率紀錄（#257）照真的規則：房間送來的「記一次」照記一次的規則檢查、同一個 id 只收一次、檢視者不收；
  * 跑一步時紀錄放回流程再跑、跑完清掉該清的；收了告訴同一支流程開著的別的房間（別人記的帶名字）。
  * recordAs(flowId, email, records)：這個人（在別的地方）記了，開著的房間馬上收到。
- * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆（斷線 1 分鐘當他離開沒做）。
+ * 一起記全上（#262）照真的規則：誰在表裡、誰拿著哪幾組只告訴能記的人；同一次全上的同一組只收先存的，救回也不算第二筆；表怎麼變交給流程核心的 runTogether（斷線 1 分鐘當他離開、被收回請出表）。
  * 斷線（#255）照真的規則：disconnect(email) 斷掉這個人開著的房間（還沒處理的、還沒送到的回答都不見，斷線時送的丟掉），
  * reconnect(email) 連回來（房間叫 onconnection(true)，重新打招呼）。打招呼帶上次看到第幾步：先補上之後別的分頁收了的步，
  * 要紀錄的再給現在的紀錄，再說可以送步。
@@ -349,6 +356,8 @@ export function fakeServer(
 		/** 房間連得上嗎（#260）：network() 換；直接改它不會通知房間（等房間自己再試，例：按「現在再試」）。 */
 		link: 'online' as 'online' | RoomDown
 	};
+	/** 瀏覽器說有沒有網路：跟著 network() 換。 */
+	const net = fakeNetwork();
 	/** 留著還沒處理的（holdRoom 時）。 */
 	let held: { room: FlowRoom; send: () => void }[] = [];
 	/** 斷線的房間：送來的不收，還沒送到的回答不見。 */
@@ -363,8 +372,6 @@ export function fakeServer(
 	};
 	/** 收過的步（每支流程）：步驟紀錄（流程核心的 LoggedStep），加上那一步改好之後的東西（重送、補步用）。 */
 	const stepLog = new Map<string, (LoggedStep & { change: RemoteChange })[]>();
-	const sameRecord = (a: StoredAttempt, b: StoredAttempt) =>
-		JSON.stringify({ actionId: a.actionId, attempt: a.attempt }) === JSON.stringify({ actionId: b.actionId, attempt: b.attempt });
 	/**
 	 * 房間收到一步：「這一步收不收」交給流程核心（takeStep，跟真的伺服器同一套規則）。canEdit 照送來那時的權限
 	 * （先留著不處理時，之後才改的權限不算到這一步上）。這裡只管存、送：
@@ -474,6 +481,7 @@ export function fakeServer(
 	};
 	/** 開著的房間。 */
 	const rooms: OpenRoom[] = [];
+	let nextConn = 1;
 	/** 告訴這支流程每個打過招呼的房間現在誰開著（自己不列，同一個人只列一次）。 */
 	const tellPresent = (flowId: string) => {
 		const here = rooms.filter((r) => r.flowId === flowId && r.here);
@@ -489,73 +497,62 @@ export function fakeServer(
 			deliver(r.room, () => ({ kind: 'present', people }));
 		}
 	};
-	/** 一起記全上（#262）：每支流程開著的全上（只在記憶體）：表裡的人（email）、誰拿著哪一組、點過沒。 */
-	const runs = new Map<string, FakeRun[]>();
+	/**
+	 * 一起記全上（#262、#352）：每支流程開著的全上的表（只在記憶體，ADR 0015）。表怎麼變交給流程核心的 runTogether（跟真的伺服器
+	 * 同一套規則，斷線 1 分鐘當他離開）；時間用 Date.now()（測試可以用假時鐘撥）。這支流程沒有連著的房間了，表就沒了（跟真的一樣）。
+	 */
+	const runs = new Map<string, RunsTogether>();
 	const userIdOf = (email: string) => state.users.findIndex((u) => same(u.email, email)) + 1;
 	const nameOf = (email: string) => find(email)?.name ?? '';
 	/** 告訴這支流程打過招呼、能記的房間現在的全上（照看的人寫哪些是他的）。 */
-	const tellRuns = (f: FakeCloudFlow) => {
-		for (const o of rooms.filter((o) => o.flowId === f.id && o.here && roleOf(f, o.email) !== 'viewer')) {
-			deliver(o.room, () => ({ kind: 'runThroughs', runs: runViews(f.id, o.email) }));
+	const tellRuns = (flowId: string) => {
+		const f = state.flows.find((g) => g.id === flowId);
+		if (!f) return;
+		for (const o of rooms.filter((o) => o.flowId === flowId && o.here && roleOf(f, o.email) !== 'viewer')) {
+			deliver(o.room, () => ({ kind: 'runThroughs', runs: runViews(flowId, o.email) }));
 		}
 	};
-	const runViews = (flowId: string, viewer: string): RunView[] =>
-		(runs.get(flowId) ?? []).map((r) => ({
-			id: r.id,
-			date: r.date,
-			startedAt: r.startedAt,
-			people: r.people.map((email) => ({ name: nameOf(email), me: same(email, viewer), away: false })),
-			keys: r.keys.map((k) => ({
-				key: k.key,
-				userId: userIdOf(k.email),
-				name: nameOf(k.email),
-				mine: same(k.email, viewer),
-				touched: k.touched,
-				away: false
-			}))
-		}));
-	/**
-	 * 一起記全上的事（照真的規則，斷線 1 分鐘當他離開沒做）：開、加入、重報；拿一組（沒人拿著、還沒點過的給他，
-	 * 點過的、別人先拿了退回）、放掉、點了、離開。回要跟送的人說的（拿不到、加入不了），別的房間照新的樣子。
-	 */
-	const runAsk = (f: FakeCloudFlow, email: string, request: RunRequest): RoomMessage | null => {
-		const list = runs.get(f.id) ?? [];
-		runs.set(f.id, list);
-		const runId = request.kind === 'runThrough' ? request.id : request.run;
-		let run = list.find((r) => r.id === runId);
-		if (!run) {
-			if (request.kind !== 'runThrough' || request.joining) return { kind: 'runClosed', run: runId };
-			run = { id: request.id, date: request.date, startedAt: request.startedAt, people: [], keys: [] };
-			list.push(run);
+	const runViews = (flowId: string, viewer: string) => runViewsOf(runs.get(flowId) ?? [], userIdOf(viewer), Date.now());
+	/** 表做一件事：存新的表，變了告訴能記的房間；回要跟送的人說的。 */
+	const runEvent = (flowId: string, event: RunEvent) => {
+		const out = runTogether(runs.get(flowId) ?? [], event, Date.now());
+		runs.set(flowId, out.runs);
+		if (out.changed) tellRuns(flowId);
+		return out.answer;
+	};
+	/** 一起記全上的事：開、加入、重報；拿一組、放掉、點了、離開。回要跟送的人說的（拿不到、加入不了）。 */
+	const runAsk = (from: OpenRoom, request: RunRequest): RoomMessage | null => {
+		const who = { userId: userIdOf(from.email), conn: from.conn, name: nameOf(from.email) };
+		const { kind } = request;
+		const run = kind === 'runThrough' ? request.id : request.run;
+		const answer = runEvent(
+			from.flowId,
+			kind === 'runThrough'
+				? { kind: 'report', who, report: { id: request.id, date: request.date, startedAt: request.startedAt, keys: request.keys, touched: request.touched, joining: request.joining } }
+				: {
+						kind: 'ask',
+						who,
+						run,
+						ask:
+							kind === 'claim'
+								? { kind, key: request.key, from: request.from }
+								: kind === 'leaveRun'
+									? { kind: 'leave' }
+									: { kind, key: request.key }
+					}
+		);
+		if (answer.kind === 'refused') return { kind: 'claimRefused', run, key: 'key' in request ? request.key : '', by: answer.by, touched: answer.touched };
+		return answer.kind === 'closed' ? { kind: 'runClosed', run } : null;
+	};
+	/** 一個房間的連線斷了（斷線、關掉）：表上記下斷線的時間，1 分鐘後再說一次（當他離開）；這支流程沒有連著的房間就拿掉表。 */
+	const runDisconnect = (r: OpenRoom) => {
+		const out = runTogether(runs.get(r.flowId) ?? [], { kind: 'disconnect', conn: r.conn }, Date.now());
+		runs.set(r.flowId, out.runs);
+		if (out.changed) {
+			tellRuns(r.flowId);
+			setTimeout(() => tellRuns(r.flowId), GONE_MS + 1_000);
 		}
-		if (request.kind !== 'leaveRun' && !run.people.some((e) => same(e, email))) run.people.push(email);
-		let answer: RoomMessage | null = null;
-		if (request.kind === 'runThrough') {
-			run.keys = run.keys.filter((k) => !same(k.email, email) || request.keys.includes(k.key));
-			for (const key of request.keys) {
-				const held = run.keys.find((k) => k.key === key);
-				if (!held) run.keys.push({ key, email, touched: request.touched.includes(key) });
-				else if (same(held.email, email)) held.touched ||= request.touched.includes(key);
-			}
-		} else if (request.kind === 'leaveRun') {
-			run.people = run.people.filter((e) => !same(e, email));
-			run.keys = run.keys.filter((k) => !same(k.email, email));
-			if (!run.people.length) list.splice(list.indexOf(run), 1);
-		} else if (request.kind === 'release') {
-			run.keys = run.keys.filter((k) => k.key !== request.key || !same(k.email, email));
-		} else {
-			const held = run.keys.find((k) => k.key === request.key);
-			const touch = request.kind === 'touch';
-			const from = request.kind === 'claim' ? request.from : null;
-			if (!held) run.keys.push({ key: request.key, email, touched: touch });
-			else if (same(held.email, email)) held.touched ||= touch;
-			else if (touch || from !== userIdOf(held.email) || held.touched) {
-				const touched = held.touched && (touch || from === userIdOf(held.email));
-				answer = { kind: 'claimRefused', run: run.id, key: request.key, by: nameOf(held.email), touched };
-			} else Object.assign(held, { email, touched: false });
-		}
-		tellRuns(f);
-		return answer;
+		if (!rooms.some((o) => o.flowId === r.flowId && o.room !== r.room && !down.has(o.room))) runs.delete(r.flowId);
 	};
 	/** 打招呼帶上次看到第 seen 步：之後別的分頁收了的步照順序補給他；中間的步沒留就給伺服器現在的樣子。 */
 	const catchUp = (f: FakeCloudFlow, seen: number, to: OpenRoom) => {
@@ -578,6 +575,7 @@ export function fakeServer(
 		}
 		down.add(r.room);
 		r.here = false;
+		runDisconnect(r);
 		r.room.onconnection(false, why);
 		tellPresent(r.flowId);
 		held = held.filter((h) => !down.has(h.room));
@@ -585,6 +583,7 @@ export function fakeServer(
 	/** 斷線的房間連回來（房間重新打招呼）。 */
 	const bringBack = (r: OpenRoom) => {
 		if (!down.delete(r.room)) return;
+		r.conn = nextConn++;
 		r.room.onconnection(true);
 	};
 	/** 斷掉這個人開著的房間。 */
@@ -615,93 +614,81 @@ export function fakeServer(
 		const records = (f.records ?? []).filter((r) => !r.gone && changed.includes(r.attempt.id));
 		return structuredClone({ kind: 'recordsChanged', changed: records.map((r) => cloudRecord(r, viewer)), deleted });
 	};
-	/** 用流程核心對一次跑改記號、救回（跟真的伺服器一樣）：收了回跑完的那一次，被擋是 undefined。 */
-	const runOne = (f: FakeCloudFlow, records: StoredAttempt[], command: Command) => {
-		const r = runCommands(putRecords(structuredClone(f.flow), structuredClone(records)), [command], '');
-		return r.kind === 'ok' ? takeRecords(r.flow).records[0] : undefined;
-	};
-	/** 同一次全上的同一個動作、同一組，別的一筆已經存了（沒清掉的）：那一筆（#262）。 */
-	const firstInRun = (f: FakeCloudFlow, r: StoredAttempt) =>
-		(f.records ?? []).find(
-			(o) =>
-				!o.gone &&
-				o.attempt.id !== r.attempt.id &&
-				r.attempt.runThroughId !== undefined &&
-				o.attempt.runThroughId === r.attempt.runThroughId &&
-				o.actionId === r.actionId &&
-				o.attempt.who === r.attempt.who
-		);
 	/**
-	 * 這個人改、刪、救回幾次（#258）：記錄者只能動自己記的，擁有者、編輯者都能；刪掉的改、刪都不算，救回才拿回來。
-	 * 回那幾次現在的樣子（還在的），告訴別的房間。
+	 * 這個人改、刪、救回幾次（#258）：「改、刪、救回」交給流程核心（amendRecords，跟真的伺服器同一套規則）。
+	 * 這裡只管存、送：照結果存起來，回那幾次現在的樣子（還在的），告訴別的房間。
 	 */
 	const amend = (f: FakeCloudFlow, email: string, request: AmendRequest, from?: FlowRoom): RoomMessage => {
-		const role = roleOf(f, email);
-		const may = (r: { by?: string }) => role === 'owner' || role === 'editor' || (role === 'recorder' && !!r.by && same(r.by, email));
-		const sent = request.kind === 'changeRecords' ? (request.attempts as StoredAttempt[]) : [];
-		const asked = request.kind === 'changeRecords' ? sent.map((s) => s.attempt.id) : request.ids;
-		const changed: string[] = [];
-		const deleted: string[] = [];
+		const sent: AmendSent =
+			request.kind === 'changeRecords'
+				? { kind: 'change', attempts: structuredClone(request.attempts as StoredAttempt[]) }
+				: { kind: request.kind === 'deleteRecords' ? 'delete' : 'restore', ids: [...request.ids] };
+		const asked = sent.kind === 'change' ? sent.attempts.map((s) => s.attempt?.id) : sent.ids;
+		const step = f.step ?? 0;
+		const outcome = amendRecords({
+			flow: structuredClone(f.flow),
+			step,
+			role: roleOf(f, email) ?? 'viewer',
+			by: email.trim().toLowerCase(),
+			sent,
+			records: (f.records ?? []).map(({ actionId, attempt, gone, by }) => ({
+				actionId,
+				attempt: structuredClone(attempt),
+				...(gone && { gone }),
+				...(by && { by: by.trim().toLowerCase() })
+			}))
+		});
+		const now = new Map([...outcome.changed, ...outcome.restored].map((r) => [r.attempt.id, r]));
+		const amended = new Map(outcome.amended.map((a) => [a.id, a.step]));
 		f.records = (f.records ?? []).map((r) => {
 			const id = r.attempt.id;
-			if (!asked.includes(id) || !may(r)) return r;
-			if (request.kind === 'deleteRecords' && !r.gone) {
-				deleted.push(id);
-				return { ...r, gone: true, amendedStep: f.step ?? 0 };
-			}
-			const marks = sent.find((s) => s.attempt.id === id)?.attempt.marks ?? {};
-			const after =
-				request.kind === 'changeRecords' && !r.gone
-					? runOne(f, [r], { name: 'changeAttempt', args: [r.actionId, id, marks] })
-					: request.kind === 'restoreRecords' && r.gone && !firstInRun(f, r)
-						? runOne(f, [], { name: 'restoreAttempt', args: [r.actionId, r.attempt, 0] })
-						: undefined;
-			if (!after) return r;
-			changed.push(id);
-			// 再送一次一樣的記號（回答沒收到）不算用手動過（跟真的伺服器一樣）。
-			const amendedStep = r.gone || !sameRecord(r, after) ? (f.step ?? 0) : r.amendedStep;
-			return { ...r, ...after, gone: false, amendedStep };
+			const after = now.get(id);
+			const amendedStep = amended.get(id) ?? r.amendedStep;
+			if (after) return { ...r, ...after, gone: false, amendedStep };
+			return outcome.deleted.includes(id) ? { ...r, gone: true, amendedStep } : r;
 		});
+		const changed = outcome.told;
+		const deleted = outcome.deleted;
 		tellRecords(f, changed, deleted, from);
 		const saved = f.records.filter((r) => !r.gone && asked.includes(r.attempt.id)).map((r) => cloudRecord(r, email));
 		return { kind: 'recordsSaved', saved, dropped: [] };
 	};
-	/** 這個人記了幾次：照記一次的規則檢查、存起來，告訴這支流程開著的別的房間（from 是送來的房間）。 */
+	/**
+	 * 這個人記了幾次：「這串紀錄收不收」交給流程核心（receiveRecords，跟真的伺服器同一套規則）。這裡只管存、送：
+	 * 收了的存起來，告訴這支流程開著的別的房間（from 是送來的房間）；沒收的照真的伺服器寫中文句子。
+	 */
 	const store = (f: FakeCloudFlow, email: string, incoming: StoredAttempt[], from?: FlowRoom): RoomMessage => {
-		const role = roleOf(f, email);
-		if (role === 'viewer') {
-			return { kind: 'recordsSaved', saved: [], dropped: incoming.map((r) => ({ id: r.attempt.id, message: '你只能看這支流程' })) };
-		}
-		const saved: ReturnType<typeof cloudRecord>[] = [];
-		const dropped: { id: string; message: string; by?: string; someone?: boolean }[] = [];
-		const added: StoredAttempt[] = [];
-		for (const r of structuredClone(incoming)) {
-			// 同一次全上的同一組只收先存的（#262）
-			const first = firstInRun(f, r);
-			if (first) {
-				const by = first.by ? nameOf(first.by) : '別人';
-				dropped.push({ id: r.attempt.id, message: `${by}已經記了這次全上的這一組`, by, ...(first.by ? {} : { someone: true }) });
-				continue;
-			}
-			const had = (f.records ?? []).find((o) => o.attempt.id === r.attempt.id);
-			if (had) {
-				if (!had.gone) saved.push(cloudRecord(had, email));
-				continue;
-			}
-			const checked = checkRecord(f.flow, r);
-			if (checked.kind === 'dropped') {
-				dropped.push({ id: r.attempt.id, message: checked.message });
-				continue;
-			}
-			f.records = [...(f.records ?? []), { ...checked.record, by: email }];
-			added.push(checked.record);
-			saved.push(cloudRecord(checked.record, email));
-		}
+		const verdicts = receiveRecords({
+			flow: structuredClone(f.flow),
+			canRecord: roleOf(f, email) !== 'viewer',
+			by: nameOf(email),
+			sent: structuredClone(incoming),
+			records: (f.records ?? []).map(({ actionId, attempt, gone, by }) => ({
+				actionId,
+				attempt: structuredClone(attempt),
+				...(gone && { gone }),
+				...(by && { by: nameOf(by) })
+			}))
+		});
+		const again = new Set(verdicts.flatMap((v) => (v.kind === 'again' ? [v.id] : [])));
+		const added = verdicts.flatMap((v) => (v.kind === 'accepted' ? [{ ...v.record, by: email }] : []));
+		const dropped = verdicts.flatMap((v) => (v.kind === 'refused' ? [droppedRecord(v.id, v.why)] : []));
+		// 跟真的伺服器一樣：收過的照存的先後，接著剛收的
+		const saved = [...(f.records ?? []).filter((r) => !r.gone && again.has(r.attempt.id)), ...added].map((r) => cloudRecord(r, email));
+		if (added.length) f.records = [...(f.records ?? []), ...added];
 		for (const other of rooms.filter((o) => o.flowId === f.id && o.room !== from)) {
-			const records = added.map((r) => cloudRecord({ ...r, by: email }, other.email));
+			const records = added.map((r) => cloudRecord(r, other.email));
 			if (records.length) deliver(other.room, () => ({ kind: 'newRecords', records }));
 		}
 		return { kind: 'recordsSaved', saved, dropped };
+	};
+	/** 沒收的那一筆，句子跟真的伺服器一樣（records.rs）。 */
+	const droppedRecord = (id: string, why: RecordRefusal): { id: string; message: string; by?: string; someone?: boolean } => {
+		if (why.code === 'viewOnly') return { id, message: '你只能看這支流程' };
+		if (why.code === 'blocked') return { id, message: why.reason.message };
+		if (why.code === 'notUnderstood') return { id, message: '伺服器看不懂這一筆' };
+		const by = why.by ?? '別人';
+		return { id, message: `${by}已經記了這次全上的這一組`, by, ...(why.by === undefined && { someone: true }) };
 	};
 	/** 這個人（在別的地方）記了：存起來，開著的房間馬上收到。 */
 	const recordAs = (flowId: string, email: string, records: StoredAttempt[]) => {
@@ -721,6 +708,9 @@ export function fakeServer(
 			);
 			if (role !== 'editor') r.editing = false;
 		}
+		// 被收回、降成檢視者：開著的房間把他請出每張表，拿著的組放掉（#262；真的伺服器在他連著的連線上做）
+		const live = rooms.some((r) => r.flowId === flowId && same(r.email, email) && !down.has(r.room));
+		if (live && (role === null || role === 'viewer')) runEvent(flowId, { kind: 'kick', userId: userIdOf(email) });
 		tellPresent(flowId);
 	};
 	/** 把 from 擁有的流程（only：只交這幾支）交給 to，from 變編輯者；告訴兩個人開著的房間。回交出去幾支。 */
@@ -1039,7 +1029,7 @@ export function fakeServer(
 						open.editing = request.editing && editor;
 						tellPresent(flowId);
 						const views = runViews(flowId, email);
-						if (role !== 'viewer' && views.length) deliver(room, () => ({ kind: 'runThroughs', runs: views }));
+						if (role !== 'viewer') deliver(room, () => ({ kind: 'runThroughs', runs: views }));
 					} else if (request.kind === 'mode') {
 						open.editing = request.editing && editor;
 						tellPresent(flowId);
@@ -1055,7 +1045,7 @@ export function fakeServer(
 						request.kind === 'touch' ||
 						request.kind === 'leaveRun'
 					) {
-						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(f, email, request) : null));
+						if (role !== 'viewer') deliver(room, () => (ready ? runAsk(open, request) : null));
 					} else if (request.kind === 'undo') {
 						const { stepId, seen, of, redo, change, joined } = request;
 						const sent = { stepId, seen, undo: { of, redo, change: change as RemoteChange, ...(joined && { joined }) } };
@@ -1067,11 +1057,12 @@ export function fakeServer(
 				},
 				close() {
 					const i = rooms.findIndex((r) => r.room === room);
+					if (i >= 0 && !down.has(room)) runDisconnect(rooms[i]);
 					if (i >= 0) rooms.splice(i, 1);
 					tellPresent(flowId);
 				}
 			};
-			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '' };
+			const open: OpenRoom = { flowId, email, room, here: false, editing: false, tab: '', conn: nextConn++ };
 			rooms.push(open);
 			// 斷著時開的房間：馬上連不上，等下一個 microtask 才說（跟真的一樣，說的時候房間已經接好了）
 			if (state.link !== 'online') {
@@ -1140,6 +1131,7 @@ export function fakeServer(
 	/**
 	 * 網路換了（#260）：斷網（'offline'）、伺服器沒回應（'unreachable'，HTTP 也連不上）、登入超過 30 天（'expired'，登出了），
 	 * 開著的房間都斷線（帶原因）；'online' 是又連上了，斷線的房間馬上連回來（跟真的自己重連一樣）。
+	 * 瀏覽器那一邊（假網路 adapter）跟著換：斷網沒網路；連上、伺服器沒回應、登入過期瀏覽器都說有網路。
 	 * 直接改 state.link 不會通知房間：等房間自己再試（例：按「現在再試」）。
 	 */
 	const network = (status: 'online' | RoomDown) => {
@@ -1149,6 +1141,7 @@ export function fakeServer(
 			state.expired = true;
 			state.signedIn = null;
 		}
+		net.set(status !== 'offline');
 		for (const open of [...rooms]) {
 			if (status === 'online') bringBack(open);
 			else cut(open, status);
@@ -1181,20 +1174,12 @@ export function fakeServer(
 			mode: (on: boolean) => room.send({ kind: 'mode', editing: on })
 		};
 	};
+	pairedNetwork.set(server, net.network);
 	return { server, state, releaseRoom, changeRole, deleteFlow, joinAs, recordAs, disconnect, reconnect, network };
 }
 
 /** 房間收到的一起記全上的事（#262）。 */
 type RunRequest = Extract<RoomRequest, { kind: 'runThrough' | 'claim' | 'release' | 'touch' | 'leaveRun' }>;
-
-/** 假的伺服器上開著的一次全上（#262）：表裡的人（email，照進來的先後）、誰拿著哪一組、點過沒。 */
-interface FakeRun {
-	id: string;
-	date: string;
-	startedAt: number;
-	people: string[];
-	keys: { key: string; email: string; touched: boolean }[];
-}
 
 /** 房間收到的改、刪、救回紀錄（#258）。 */
 type AmendRequest = Extract<RoomRequest, { kind: 'changeRecords' | 'deleteRecords' | 'restoreRecords' }>;
@@ -1211,6 +1196,8 @@ interface OpenRoom {
 	editing: boolean;
 	tab: string;
 	sentBack?: number;
+	/** 這個連線的號碼（一起記全上的表記誰連著）：斷線連回來換一個新的（跟真的一樣是新的連線）。 */
+	conn: number;
 }
 
 /** 手動撥的畫面時鐘：排到下一格的先記著，測試 step() 撥一格才跑。 */
@@ -1227,6 +1214,30 @@ export function manualFrames() {
 	};
 }
 
+/** 假伺服器帶著的假網路 adapter（testEditor 拿那個伺服器就用它）。 */
+const pairedNetwork = new WeakMap<ServerAdapter, NetworkAdapter>();
+
+/** 假的網路 adapter：一開始有沒有網路（預設有），set() 切（變了才通知）。 */
+export function fakeNetwork(online = true) {
+	let now = online;
+	const listeners = new Set<() => void>();
+	const network: NetworkAdapter = {
+		online: () => now,
+		onChange(changed) {
+			listeners.add(changed);
+			return () => listeners.delete(changed);
+		}
+	};
+	return {
+		network,
+		set(online: boolean) {
+			if (online === now) return;
+			now = online;
+			for (const changed of [...listeners]) changed();
+		}
+	};
+}
+
 /**
  * 一行建好編輯器 module：帶好流程的 session（算存過的，跟剛開檔一樣），adapter 全是假的。Node 和 jsdom 的測試都用它。
  * 要換掉哪個 adapter 就放進 adapters（例：慢的解碼、先放一份草稿的草稿存放），換掉的自己留著它的把手。
@@ -1234,9 +1245,12 @@ export function manualFrames() {
  * saves 是預設的假存檔存下來的檔（換掉 createSaver 就不會有），預設的假下載（雲端流程「⤓ 下載」）也放這裡。
  * 分頁頻道預設沒有（當作沒有別的分頁）；測兩個分頁時，兩個編輯器 module 放同一個 fakeTabs()。
  * 伺服器預設是沒人登入的假伺服器（fakeServer）。
+ * 網路接的是那個假伺服器帶著的（換網路叫假伺服器的 network()）；給的伺服器不是假伺服器就一直有網路。
  */
 export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAdapters> = {}) {
 	const { saver, saves } = fakeSaver();
+	const server = adapters.server ?? fakeServer().server;
+	const network = pairedNetwork.get(server) ?? fakeNetwork().network;
 	const videoSaves: { bytes: Uint8Array; fileName: string }[] = [];
 	const videoEncoder = createFakeVideoEncoder();
 	const editor = new Editor(
@@ -1253,8 +1267,9 @@ export function testEditor(flow: Flow | null = null, adapters: Partial<EditorAda
 			openTabChannel: null,
 			pendingInput: fakePendingInput(),
 			nextFrame: manualFrames().nextFrame,
-			server: fakeServer().server,
+			server,
 			offline: fakeOfflineStore().store,
+			network,
 			video: {
 				encoder: videoEncoder,
 				save: async (bytes, fileName) => {

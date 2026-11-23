@@ -2,7 +2,8 @@
 // 管：登入的是誰（斷網時用這台記著的，#261）、首頁「雲端」的「我的流程」「分享給我的」（連不上伺服器是 cloudError）、
 // 這台每支雲端流程還沒傳的紀錄有幾筆（#260）、這台的離線副本（#261）、斷網時上次看到的雲端流程、
 // 登出（這台還有沒傳的先問；登出時清掉離線副本，選「丟掉，登出」再清掉沒傳的）。
-// 不管：有沒有網路（頁面聽瀏覽器的 online、offline，叫的時候給）；最近的流程、打開、新建、被收回的離線副本（流程檔 module）；
+// 有沒有網路讀編輯器 module 的 online（問登入的是誰時，問之前、問完各看一次）；在首頁時網路換了，頁面再叫一次 refresh。
+// 不管：瀏覽器怎麼說有沒有網路（網路 adapter）；最近的流程、打開、新建、被收回的離線副本（流程檔 module）；
 // 我的帳號頁（它自己連伺服器）。
 
 import type { Editor } from '#lib/editor.svelte.js';
@@ -59,14 +60,14 @@ export class Home {
 	}
 
 	/**
-	 * 問伺服器登入的是誰。伺服器說沒登入就是沒登入；問不到、問的時候或問完時斷網（online() 是 false）：
+	 * 問伺服器登入的是誰。伺服器說沒登入就是沒登入；問不到、問之前或問完時斷網：
 	 * 用這台記著的，首頁照樣列離線副本。
 	 */
-	async load(online: () => boolean) {
+	async load() {
 		const { server, offline } = this.#editor.adapters;
-		const askedOnline = online();
+		const askedOnline = this.#editor.online;
 		const me = await server.me();
-		const unreachable = me === undefined && !(askedOnline && online());
+		const unreachable = me === undefined && !(askedOnline && this.#editor.online);
 		this.#account = me ?? (unreachable ? ((await offline.signedInHere())?.me ?? null) : null);
 	}
 
@@ -75,9 +76,10 @@ export class Home {
 	 * （拿到了記下這台登入的是誰、看到哪些雲端流程，被收回、被刪掉的離線副本刪掉），斷網拿上次看到的雲端流程。
 	 * 回一個函式：離開首頁時叫它，之後才回來的不算。
 	 */
-	refresh(online: boolean): () => void {
+	refresh(): () => void {
 		const me = this.#account;
 		if (!me) return () => {};
+		const online = this.#editor.online;
 		const { offline, server } = this.#editor.adapters;
 		let stale = false;
 		const readLocal = async () => {

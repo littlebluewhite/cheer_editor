@@ -6,7 +6,7 @@ import { ServerUnreachable, httpServer } from '#lib/server-api.js';
 import { m } from '#lib/paraglide/messages.js';
 import { appShell } from '#lib/app-shell.js';
 import { scenarioShell } from '#lib/scenario-shell.js';
-import { fakeHost } from '#lib/test-fakes.js';
+import { fakeHost, fakeNetwork } from '#lib/test-fakes.js';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -47,8 +47,6 @@ describe('房間連不上：被收回、被刪掉', () => {
 		}
 		vi.stubGlobal('WebSocket', Refused);
 		vi.stubGlobal('location', { href: 'https://cheer.example/' });
-		vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} });
-		vi.stubGlobal('navigator', { onLine: true });
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (url: string) => new Response('{}', { status: url.endsWith('/api/me') ? 200 : flowStatus }))
@@ -63,7 +61,7 @@ describe('房間連不上：被收回、被刪掉', () => {
 		it(`流程 ${status}：說 ${kind}，不再重連`, async () => {
 			vi.useFakeTimers();
 			const ws = refusedRoom(status);
-			const room = httpServer().openRoom('c1');
+			const room = httpServer('', fakeNetwork().network).openRoom('c1');
 			const heard: unknown[] = [];
 			room.onmessage = (m) => heard.push(m);
 			await vi.advanceTimersByTimeAsync(30_000);
@@ -72,6 +70,92 @@ describe('房間連不上：被收回、被刪掉', () => {
 			vi.useRealTimers();
 		});
 	}
+});
+
+describe('房間問網路 adapter：有沒有網路', () => {
+	/** 連得上的 WebSocket（連上就 open）；回開過的每一個。fetch 照 me 給（丟錯就是連不上）。 */
+	function openRoom(me: () => Promise<Response>) {
+		const sockets: Socket[] = [];
+		class Socket {
+			static OPEN = 1;
+			readyState = 0;
+			onopen: (() => void) | null = null;
+			onmessage: (() => void) | null = null;
+			onclose: (() => void) | null = null;
+			constructor() {
+				sockets.push(this);
+				queueMicrotask(() => {
+					this.readyState = 1;
+					this.onopen?.();
+				});
+			}
+			send() {}
+			close() {
+				this.readyState = 3;
+				queueMicrotask(() => this.onclose?.());
+			}
+		}
+		vi.stubGlobal('WebSocket', Socket);
+		vi.stubGlobal('location', { href: 'https://cheer.example/' });
+		vi.stubGlobal('fetch', vi.fn(me));
+		const net = fakeNetwork();
+		const room = httpServer('', net.network).openRoom('c1');
+		const heard: [boolean, string?][] = [];
+		room.onconnection = (connected, why) => heard.push(why ? [connected, why] : [connected]);
+		return { net, room, heard, sockets };
+	}
+
+	it('網路 adapter 說斷網：自己關掉房間，原因是斷網（不問伺服器）', async () => {
+		vi.useFakeTimers();
+		const fetch = vi.fn(async () => new Response('{}'));
+		const s = openRoom(fetch);
+		await vi.advanceTimersByTimeAsync(0);
+		s.net.set(false);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(s.heard).toEqual([[false, 'offline']]);
+		expect(fetch).not.toHaveBeenCalled();
+		s.room.close();
+		vi.useRealTimers();
+	});
+
+	it('斷網時連上網路：馬上再連，不等重連的時間', async () => {
+		vi.useFakeTimers();
+		const s = openRoom(async () => new Response('{}'));
+		await vi.advanceTimersByTimeAsync(0);
+		s.net.set(false);
+		await vi.advanceTimersByTimeAsync(0);
+		s.net.set(true);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(s.sockets).toHaveLength(2);
+		expect(s.heard).toEqual([[false, 'offline'], [true]]);
+		s.room.close();
+		vi.useRealTimers();
+	});
+
+	it('網路 adapter 說有網路、伺服器問不到：原因是伺服器沒回應', async () => {
+		vi.useFakeTimers();
+		const s = openRoom(async () => {
+			throw new TypeError('failed');
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		s.sockets[0].close();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(s.heard).toEqual([[false, 'unreachable']]);
+		s.room.close();
+		vi.useRealTimers();
+	});
+
+	it('關掉房間之後：網路換了也不再連', async () => {
+		vi.useFakeTimers();
+		const s = openRoom(async () => new Response('{}'));
+		await vi.advanceTimersByTimeAsync(0);
+		s.room.close();
+		s.net.set(false);
+		s.net.set(true);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(s.sockets).toHaveLength(1);
+		vi.useRealTimers();
+	});
 });
 
 describe('拿一支雲端流程', () => {

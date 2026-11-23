@@ -1,6 +1,6 @@
 // 頁面：離線副本（#261，#187、#192 的結論）。登入的人打開過的雲端流程這台留一份（含音樂），留最近打開的 5 支（有沒傳紀錄的不刪）；
 // 斷網的首頁只列離線副本；斷網打開離線副本是檢視模式、能播放、能記、編輯按不了、灰條；登出清掉；連上後發現被收回、被刪掉就刪掉那份。
-// 伺服器、離線存放換成測試共用的假的（fakeServer 的 network() 換網路，fakeOfflineStore 存在記憶體）；瀏覽器的有沒有網路用 navigator.onLine。
+// 伺服器、離線存放換成測試共用的假的（fakeServer 的 network() 換網路，fakeOfflineStore 存在記憶體）；瀏覽器的有沒有網路用 testEditor 的 net。
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadSegmentAudio, writeFlowFile, type StoredAttempt } from '#lib/core';
@@ -66,11 +66,9 @@ async function goHome() {
 	await settle();
 }
 
-/** 換網路：瀏覽器說的（navigator.onLine、online／offline 事件）和假伺服器一起換。 */
-async function network(s: { network: (status: 'online' | 'offline') => void }, status: 'online' | 'offline') {
-	vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(status === 'online');
+/** 換網路（假伺服器的開關，瀏覽器說的跟著換），等跑完。 */
+async function network(s: Pick<ReturnType<typeof home>, 'network'>, status: 'online' | 'offline') {
 	s.network(status);
-	window.dispatchEvent(new Event(status));
 	await settle();
 }
 
@@ -163,7 +161,6 @@ async function openedTwo() {
 /** 斷網，再打開網頁（同一台：同一個離線存放）。 */
 async function reloadOffline(s: Awaited<ReturnType<typeof openedTwo>>) {
 	s.view.unmount();
-	vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
 	s.network('offline');
 	const page = editorPage(null, { server: s.server, offline: s.offline.store });
 	const view = render(Page, page.props);
