@@ -3,7 +3,7 @@
 	// 沒登入也打得開，不問伺服器（App 裡離線也看得到）。留多久的數字對得上伺服器實際的行為：
 	// server/src/accounts.rs（登入 30 天、cookie 400 天、設密碼連結 24 小時／1 小時）、daily.rs（每天台灣時間 5 點清）、
 	// backup.rs（備份 30 天）、lockout.rs。改了那邊，這頁跟著改，最上面的日期也改。
-	// 「資料處理條款」那句只寫已經適用的：Fly.io 的要另外簽（#372），網站主人簽了再把 Fly.io 加進那句。
+	// 「資料處理條款」那句只寫已經適用的：Fly.io 的另外簽（#372，網站主人 2026-11-24 在 Fly.io Trust Center 簽好）。
 	import { resolve } from '$app/paths';
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import { SUPPORT_EMAIL as SUPPORT } from '#lib/support-email.js';
@@ -78,7 +78,7 @@
 
 		<section>
 			<h2>交給哪些服務、在哪裡</h2>
-			<p>這個服務用下面幾家公司的服務來跑。Neon、Cloudflare、Resend 的服務條款附有它們的資料處理條款。</p>
+			<p>這個服務用下面幾家公司的服務來跑。Fly.io 跟我們另外簽了資料處理條款；Neon、Cloudflare、Resend 的服務條款附有它們的資料處理條款。</p>
 			<div class="table-wrap">
 				<table>
 					<caption>交給哪些服務</caption>
