@@ -125,4 +125,32 @@ describe('傳這台沒傳的紀錄', () => {
 		expect(fake.state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tfirst0000001']);
 		expect(offline.of('c1')!.records.map((r) => r.record.attempt.id)).toEqual(['tsecond000002']);
 	});
+	it('一批刪伺服器只照做了一部分（記錄者連別人記的一起刪）：刪掉的拿掉，只留沒刪掉的那幾次（下次不再刪別人救回的）', async () => {
+		const wangs = recorded('twang00000001').record;
+		const mine = recorded('tmine00000001').record;
+		const fake = fakeServer({
+			users: [lin, wang],
+			signedIn: lin.email,
+			flows: [
+				{
+					id: 'c1',
+					owner: wang.email,
+					flow: libSample(),
+					updatedAt: '2026-11-07T00:00:00Z',
+					people: { [lin.email]: 'recorder' },
+					records: [
+						{ ...wangs, by: wang.email },
+						{ ...mine, by: lin.email }
+					]
+				}
+			]
+		});
+		const ids = ['twang00000001', 'tmine00000001'];
+		const offline = fakeOfflineStore({
+			unsent: [{ flowId: 'c1', flowName: '區賽', records: [], amends: [{ ids, request: { kind: 'deleteRecords', ids } }], dropped: [] }]
+		});
+		await sendUnsent(fake.server, offline.store);
+		expect(fake.state.flows[0].records?.filter((r) => !r.gone).map((r) => r.attempt.id)).toEqual(['twang00000001']);
+		expect(offline.of('c1')!.amends).toEqual([{ ids: ['twang00000001'], request: { kind: 'deleteRecords', ids: ['twang00000001'] } }]);
+	});
 });
