@@ -279,6 +279,34 @@ describe('我的帳號頁', () => {
 		expect(went).toEqual([]);
 	});
 
+	it('要求刪除帳號：最後再看一次的時候按「取消」又重新打開確認框，取消的那次不會替新的確認框送出要求', async () => {
+		const { state, went, offline } = await accountPage();
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		const read = offline.store.unsent.bind(offline.store);
+		const gate = Promise.withResolvers<void>();
+		let reads = 0;
+		offline.store.unsent = async () => {
+			// 第 1 次是傳的時候讀的，第 2 次是傳完再看一次
+			if (++reads === 2) await gate.promise;
+			return read();
+		};
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(reads).toBe(2);
+		await fireEvent.click(within(box).getByRole('button', { name: '取消' }));
+		await flush();
+		// 確認框外面那顆「要求刪除帳號」：重新打開
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(screen.getByRole('dialog', { name: '要求刪除帳號？' })).toBeTruthy();
+		gate.resolve();
+		await flush();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(went).toEqual([]);
+	});
+
 	it('要求刪除帳號：今天寄不出信，確認框裡說明天再試，帳號不變', async () => {
 		const { state } = await accountPage();
 		state.mailQuota = true;

@@ -141,16 +141,18 @@
 	/** 確認框按「要求刪除帳號」：這台還有沒傳的紀錄先傳上去；都傳了就送出，還有傳不上去的就跳小框。傳的時候按了取消：不送。 */
 	async function confirmDelete(e: SubmitEvent) {
 		e.preventDefault();
+		// 按的是這個確認框：取消後又打開的是另一個，等的時候取消過就不替新的送
+		const asked = deleting;
 		busy = true;
 		try {
 			await sendUnsent(server, offline);
 		} finally {
 			busy = false;
 		}
-		if (!deleting) return;
+		if (!asked || deleting !== asked) return;
 		const left = await unsentFlows(offline);
 		// 最後再看一次的時候按了取消：也不送
-		if (!deleting) return;
+		if (deleting !== asked) return;
 		if (!left.length) return requestDelete();
 		unsentForDelete = true;
 		unsentAtLogout = left;
