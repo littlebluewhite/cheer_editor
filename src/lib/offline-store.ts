@@ -135,17 +135,27 @@ export function isEmptyUnsent(u: UnsentRecords): boolean {
 }
 
 /**
- * 這個分頁的和這台存著的（別的分頁可能也存了）合起來：記的、沒存進去的照那一次的 id 只留一份，
- * 改、刪、救回一樣的只留一份；兩邊都有的用這個分頁的，存著的多的接在後面。
+ * 這個分頁的和這台存著的（別的分頁可能也存了）照那一次的 id 合起來：這個分頁記過、改過、刪過、救回過的那一次
+ * 照這個分頁的，存著的只接上其他次的（記的、改刪救回的、沒存進去的）。
  */
 export function mergeUnsent(mine: UnsentRecords, stored: UnsentRecords): UnsentRecords {
-	const recordIds = new Set(mine.records.map((r) => r.record.attempt.id));
-	const amends = new Set(mine.amends.map((a) => JSON.stringify(a)));
+	const touched = new Set([...mine.records.map((r) => r.record.attempt.id), ...mine.amends.flatMap((a) => a.ids)]);
 	const droppedIds = new Set(mine.dropped.map((d) => d.id));
+	const others = (ids: string[]) => ids.filter((id) => !touched.has(id));
+	const amends = stored.amends.flatMap(({ ids, request }) => {
+		const left = others(ids);
+		if (!left.length) return [];
+		if (left.length === ids.length) return [{ ids, request }];
+		const kept: AmendRequest =
+			request.kind === 'changeRecords'
+				? { kind: 'changeRecords', attempts: (request.attempts as StoredAttempt[]).filter((a) => !touched.has(a.attempt.id)) }
+				: { kind: request.kind, ids: others(request.ids) };
+		return [{ ids: left, request: kept }];
+	});
 	return {
 		...mine,
-		records: [...mine.records, ...stored.records.filter((r) => !recordIds.has(r.record.attempt.id))],
-		amends: [...mine.amends, ...stored.amends.filter((a) => !amends.has(JSON.stringify(a)))],
+		records: [...mine.records, ...stored.records.filter((r) => !touched.has(r.record.attempt.id))],
+		amends: [...mine.amends, ...amends],
 		dropped: [...mine.dropped, ...stored.dropped.filter((d) => !droppedIds.has(d.id))]
 	};
 }

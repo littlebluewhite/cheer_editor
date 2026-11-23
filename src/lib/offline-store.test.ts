@@ -82,6 +82,19 @@ describe('這個分頁和這台存著的都有沒傳的（換成最新的那支�
 			dropped: [row, otherRow]
 		});
 	});
+
+	it('這個分頁動過的那一次照這個分頁的：這邊救回了、存著的還是刪，不再刪；別的那一次的照樣送', async () => {
+		const restore = (id: string) => ({ ids: [id], request: { kind: 'restoreRecords' as const, ids: [id] } });
+		const mine: UnsentRecords = { flowId: 'c1', flowName: '區賽', records: [], amends: [restore('tabc123def456')], dropped: [] };
+		const stored: UnsentRecords = {
+			flowId: 'c1',
+			flowName: '區賽',
+			records: [],
+			amends: [{ ids: ['tabc123def456', 'tqwe123rty456'], request: { kind: 'deleteRecords', ids: ['tabc123def456', 'tqwe123rty456'] } }],
+			dropped: []
+		};
+		expect(mergeUnsent(mine, stored).amends).toEqual([restore('tabc123def456'), del('tqwe123rty456')]);
+	});
 });
 
 describe('離線副本存的樣子（#261）', () => {
