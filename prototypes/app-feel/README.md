@@ -2,7 +2,7 @@
 
 **這裡的東西只是拿來比的，不是 App 的起點。** 兩個小樣是比完就丟的程式，沒有測試、只做到能量；真的 App 照 ADR 0022–0025 在 `ios/` 從頭寫，不從這裡複製。留著是為了 `RESULTS.md` 的數字和量測腳本查得到出處（#361）。
 
-B 要的兩個掛鉤（`__appOpenFlow`、在殼裡打開就回最近的流程）原本直接加在 `src/routes/+page.svelte`；合進來時沒進正式的首頁，留成 `web/page-hook.patch`。這個 patch 只套得上合進來的那個 commit `5cd00d4c`（之後的首頁改過，現在的 main 套不上）。要重建 B，先 `git switch --detach 5cd00d4c`，再 `git apply prototypes/app-feel/web/page-hook.patch`，建完再還原，不要 commit。
+B 要的兩個掛鉤（`__appOpenFlow`、在殼裡打開就回最近的流程）原本直接加在 `src/routes/+page.svelte`；合進來時沒進正式的首頁，留成 `web/page-hook.patch`。這個 patch 是照合進來的那個 commit `5cd00d4c` 的首頁做的，在那裡套得上；之後首頁改多了就套不上（`git apply --check` 先試）。套不上就先 `git switch --detach 5cd00d4c`。要重建 B，先 `git apply prototypes/app-feel/web/page-hook.patch`，建完再還原，不要 commit。
 
 比的是三組：**現在的網頁在 Safari 裡（基準）**、**(A) 原生小樣**、**(B) 網頁小樣**。尺照「用起來更順」那張票（#299）。
 
