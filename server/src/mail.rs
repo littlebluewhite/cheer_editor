@@ -2,6 +2,10 @@
 
 use std::sync::{Arc, Mutex};
 
+/// 支援信箱（#372）：每封信的回覆地址（Reply-To），隱私權政策、支援頁寫的也是這個。
+/// 寄到這裡的信由 Cloudflare Email Routing 轉到網站主人的信箱（#363）。
+pub const SUPPORT_EMAIL: &str = "support@littlebluewhite.com";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mail {
     pub to: String,
@@ -72,7 +76,8 @@ impl Mailer {
                     [mail.to.as_str()],
                     mail.subject.as_str(),
                 )
-                .with_text(&mail.text);
+                .with_text(&mail.text)
+                .with_reply(SUPPORT_EMAIL);
                 client
                     .emails
                     .send(email)
