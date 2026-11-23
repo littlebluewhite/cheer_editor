@@ -59,7 +59,7 @@ describe('傳這台沒傳的紀錄', () => {
 		expect(fake.state.flows[0].records?.filter((r) => !r.gone).map((r) => r.attempt.id)).toEqual(['twang00000001']);
 		expect(offline.of('c1')!.amends).toEqual([amend]);
 	});
-	it('等伺服器回答時別的分頁改了那一次的記號（同一個 id）：伺服器收的是改之前的，改過的留在這台', async () => {
+	it('等伺服器回答時別的分頁改了那一次的記號（同一個 id）：伺服器收的是改之前的，改過的留在這台（下次送「改」）', async () => {
 		const fake = fakeServer({
 			users: [lin],
 			signedIn: lin.email,
@@ -77,7 +77,9 @@ describe('傳這台沒傳的紀錄', () => {
 		await offline.store.saveUnsent({ ...u, records: [changed] });
 		fake.releaseRoom();
 		await done;
-		expect(offline.of('c1')!.records.map((r) => r.record.attempt.marks)).toEqual([{ p1: '✗' }]);
+		// 伺服器上那一次已經有了（再記一次不會換）：改過的記號變成「改」留在這台，下次送
+		expect(offline.of('c1')!.records).toEqual([]);
+		expect(offline.of('c1')!.amends).toEqual([{ ids: ['tfirst0000001'], request: { kind: 'changeRecords', attempts: [changed.record] } }]);
 	});
 
 	it('等刪的回答時別的分頁救回又刪了同一次：伺服器照做的那個刪拿掉，後來的救回、刪照先後留在這台', async () => {
