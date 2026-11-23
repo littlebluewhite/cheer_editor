@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeHost, fakeShell } from '#lib/test-fakes.js';
 import Guide from './+page.svelte';
 
 describe('使用說明', () => {
@@ -483,6 +484,49 @@ describe('環節：金字塔的環節可以佔同樣的拍', () => {
 		}
 		for (const old of ['後面環節的按鈕變灰', '它後面的環節就空著', '（✗ 後面的不用）', '中途失敗之後的', '按到 ✗ 也馬上存，後面的環節空著']) {
 			expect(text, old).not.toContain(old);
+		}
+	});
+});
+
+describe('App 的做法（#398）', () => {
+	const appText = () => [...document.querySelectorAll('main .app')].map((el) => el.textContent ?? '');
+
+	it('在 App 裡：每一節旁邊有「App 裡：…」，寫各存各的、各登各的、草稿搬家、刪掉 App、換手機、列印的「分享」、沒有輸出影片', () => {
+		fakeHost({ shell: fakeShell() });
+		render(Guide);
+		const all = appText();
+		expect(all.length).toBeGreaterThan(0);
+		for (const t of all) expect(t.trim().startsWith('App 裡：'), t.slice(0, 20)).toBe(true);
+		const near = (id: string) => {
+			const head = document.getElementById(id)!;
+			let text = '';
+			for (let el = head.nextElementSibling; el && !/^H[234]$/.test(el.tagName); el = el.nextElementSibling) text += el.textContent;
+			return text;
+		};
+		const text = all.join('\n');
+		for (const w of ['各存各的、各登各的', '先存成流程檔', '刪掉 App', '文字大小', 'App Store 更新']) expect(text, w).toContain(w);
+		expect(near('最近的流程'), '刪掉 App').toContain('刪掉 App，裡面的草稿就沒了');
+		expect(near('八拍表'), '分享').toContain('在列印畫面按「分享」');
+		expect(near('輸出影片'), '沒有輸出影片').toMatch(/App 裡：.*沒有「輸出影片」/);
+		expect(near('登入和帳號'), '各登各的').toContain('各登各的');
+		expect(near('一起記成功率'), '不用加').toContain('不用加到主畫面');
+		expect(near('一起記成功率'), '換手機').toContain('換手機前');
+	});
+
+	it('網頁版：上架前看不到「App 裡：…」；「加到主畫面」那段標「網頁版」', () => {
+		render(Guide);
+		expect(appText()).toEqual([]);
+		expect(document.getElementById('cloud')!.textContent).not.toContain('App 裡');
+		const item = [...document.querySelectorAll('#cloud li')].find((li) => li.textContent?.includes('加到主畫面'))!;
+		expect(item.textContent).toContain('網頁版');
+	});
+
+	it('在 App 裡段落也不要太密、交叉引用都連得到', () => {
+		fakeHost({ shell: fakeShell() });
+		render(Guide);
+		for (const el of document.querySelectorAll('main .app')) {
+			expect(el.textContent!.replace(/\s+/g, '').length).toBeLessThanOrEqual(250);
+			for (const a of el.querySelectorAll('a[href^="#"]')) expect(document.getElementById(decodeURIComponent(a.getAttribute('href')!.slice(1)))).not.toBeNull();
 		}
 	});
 });
