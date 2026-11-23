@@ -7,7 +7,7 @@ import { scenarioShell } from '#lib/scenario-shell.js';
 import { createFlow, renameFlow, writeFlowFile } from '#lib/core';
 import type { Shell } from '#lib/host.js';
 import { OPEN_FILE_FEATURE, shellFilePicker } from '#lib/shell-open-file.js';
-import { fakeDraftStore, fakeHost, fakeSaver, fakeSettings, flush, testEditor } from '#lib/test-fakes.js';
+import { cloudEditor, fakeDraftStore, fakeHost, fakeSaver, fakeSettings, flush, testEditor } from '#lib/test-fakes.js';
 import { flowOf } from '#lib/test-flows.js';
 
 const contest = () => flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } }));
@@ -119,6 +119,24 @@ describe('從「檔案」或 LINE 打開流程檔', () => {
 		expect(editor.file.askingToOpen).toBe(true);
 		await editor.file.answer('discard');
 		expect(session.flow?.name).toBe('全國賽');
+		disconnect();
+	});
+
+	it('開著雲端流程、還有沒送到的步：不開，說送到了再打開；沒送到的步不丟', async () => {
+		const { shell, hand } = handingShell(null);
+		fakeHost({ shell });
+		const s = await cloudEditor();
+		const disconnect = s.editor.file.connect();
+		await flush();
+		s.state.holdRoom = true;
+		s.session.ask.send({ name: 'renameFlow', args: ['區賽'] });
+		expect(s.editor.file.cloud!.unsent).toBe(1);
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await flush();
+		await flush();
+		expect(s.session.flow!.name).toBe('區賽');
+		expect(s.editor.file.cloud!.unsent).toBe(1);
+		expect(s.session.notice).toBe('還有 1 步沒送到雲端：送到了再打開「全國賽.cheer」一次');
 		disconnect();
 	});
 

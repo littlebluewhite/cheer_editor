@@ -283,14 +283,15 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存回在 #385），分享選單給的是副本。
 - **「檔案」點、分享選單交來的**：`SceneDelegate` 收到網址（App 沒開著是 `willConnectTo` 的 `urlContexts`，開著是 `openURLContexts`）交給 `OpenFilePart.handOver`：殼收著、說 `fileOpened`，網頁拿（`takeOpenedFile`）。拿過就沒了，重新載入不會又打開；網頁還沒拿又交一個，給最後那個。App 剛打開時網頁一開始就先拿，拿到了就開它，不開上次那支（上次那支的草稿還在）。讀檔用 security-scoped 加 `NSFileCoordinator`，不在主執行緒上讀。
 - **「開啟流程檔」**：網頁 `pickFlowFile`，殼叫出系統的選檔畫面（`UIDocumentPickerViewController`，只選得到 `.cheer`、`.zip`，`asCopy: false` 原地打開），按取消回 null。沒用 iOS 18.4 的 `WKUIDelegate` 選檔（`runOpenPanelWith`）：它會連段設定選音樂檔的 `<input type="file">` 一起接走，殼分不出是哪一個欄位、篩不了型別，也進不了情境檔。
+- **開著雲端流程、還有沒送到的步**時交來一個檔：不開（換掉那些步就不見了；回首頁有問的框，這條路沒有），提示「還有 N 步沒送到雲端：送到了再打開「檔名」一次」。殼已經把檔交出去了，要再點一次。
 - 存檔還是跟以前一樣（分享選單存成新檔）；蓋回原檔、記住存到哪是 #385。
 
 在 iOS 27.2 模擬器上看到的（2026-11-24，iPhone）：
 
 - 把 `全國賽.cheer` 放進模擬器「我的 iPhone」（`group.com.apple.FileProvider.LocalStorage` 的 File Provider Storage），App 關著時 `xcrun simctl openurl <UDID> file://…/全國賽.cheer`：系統開了 App，進那支流程。App 開著時再 openurl 另一個 `.cheer`：直接換成那支，提示「已開啟『practice.cheer』」。這是系統把檔交給 App 的那一步，不是在「檔案」App 裡用手點。
-- 管子測試 `PipeTests/OpenFilePipeTests.swift`：真的那包網頁，記著上次那支時交一個檔，開交來的那支；App 開著時交一個檔，打開它。
+- 管子測試 `PipeTests/OpenFilePipeTests.swift`：真的那包網頁，記著上次那支時交一個檔，開交來的那支；App 開著時交一個檔，打開它；首頁按「開啟流程檔」請殼選檔（選檔畫面換成直接回一個檔），打開它。
 - **沒試的**（測試按不到系統畫面，要手動）：在「檔案」App 裡用手點 `.cheer`；分享選單「更多」裡有沒有 App、交 `.zip`／`.cheer` 打不打得開；「開啟流程檔」的選檔畫面（選、取消）；iCloud Drive 裡還沒下載的檔；真機（#379）。
-- 分享選單能不能把 App 移到第一排：沒驗。
+- 分享選單能不能把 App 移到第一排：沒在裝置上驗。Apple 的 iPhone 使用手冊「Customize sharing options in an iPhone app」（https://support.apple.com/guide/iphone/iphc572ca489/ios ，2026-11-24 查，只看到搜尋摘要）寫：分享選單滑到「更多」→「編輯」，可以把一項加進「喜好項目」、拖動排順序；摘要說分享選項是照 App 各自設定（在 LINE 裡設的只管 LINE），要真機確認。
 
 ## 還沒做的（後面的票）
 

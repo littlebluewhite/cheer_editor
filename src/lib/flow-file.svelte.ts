@@ -956,7 +956,8 @@ export class FlowFile {
 	}
 
 	/**
-	 * 打開殼收著的流程檔（從「檔案」、分享選單交給 App 的，#384）：照開檔的規則（拆兩層、錯誤訊息、有沒存的修改先問）。
+	 * 打開殼收著的流程檔（從「檔案」、分享選單交給 App 的，#384）：照開檔的規則（拆兩層、錯誤訊息、有沒存的修改先問）；
+	 * 開著的雲端流程還有沒送到的步就不開，說送到了再打開。
 	 * 殼不會、沒有檔回 false。拿到了就不再藏著首頁：開檔可能要先問（有沒存的修改、那個檔有改過的草稿），問的框要看得到。
 	 */
 	async #openHandedFile(): Promise<boolean> {
@@ -964,7 +965,10 @@ export class FlowFile {
 		const file = await takeOpenedFile(host().shell);
 		if (!file) return false;
 		this.#reopening = false;
-		await this.open(file);
+		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次
+		const unsent = this.cloud?.unsent ?? 0;
+		if (unsent) this.#editor.session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
+		else await this.open(file);
 		return true;
 	}
 

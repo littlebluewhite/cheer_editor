@@ -25,11 +25,12 @@ struct OpenFilePipeTests {
     }
 
     /// 真的那包網頁、iPad 橫拿的大小，接草稿、小設定、開流程檔三塊（檔換成暫存的）。
-    func app(drafts: DraftFolder, settings: URL) throws -> (Harness, OpenFilePart) {
+    /// pick：選檔畫面選到的（換掉真的選檔畫面）。
+    func app(drafts: DraftFolder, settings: URL, pick: @escaping @MainActor () async -> URL? = { nil }) throws -> (Harness, OpenFilePart) {
         let site = try #require(Bundle.main.url(forResource: "Web", withExtension: "bundle"), "先跑 npm run ios:web")
         var part: OpenFilePart!
         let h = Harness(siteRoot: site, parts: {
-            part = OpenFilePart(outbox: $0.outbox)
+            part = OpenFilePart(outbox: $0.outbox, pick: pick)
             return [DraftsPart.inApp(outbox: $0.outbox, folder: drafts), SettingsPart(file: SettingsFile(url: settings)), part]
         }, size: CGSize(width: 1194, height: 834))
         return (h, part)
@@ -64,7 +65,26 @@ struct OpenFilePipeTests {
         try await h.waitUntil("停在首頁") {
             (try? await h.js("return getComputedStyle(document.body).visibility !== 'hidden' && !!document.querySelector('form.new-flow')")) as? Bool == true
         }
+        try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
         part.handOver(try handed())
         try await h.waitUntil("打開交來的那支") { await showing(h, flow: "全國賽") }
+    }
+
+    @Test func 真的那包網頁_首頁按開啟流程檔_請殼叫出選檔畫面_選了就打開() async throws {
+        let picked = try handed()
+        var asked = 0
+        let (h, _) = try app(drafts: DraftFolder(root: temp("drafts")), settings: temp("settings.json"), pick: {
+            asked += 1
+            return picked
+        })
+        try await h.load("")
+        try await h.waitUntil("停在首頁") {
+            (try? await h.js("return getComputedStyle(document.body).visibility !== 'hidden' && !!document.querySelector('label.open input[type=file]')")) as? Bool == true
+        }
+        // 網頁程式接手前點，按鈕還沒接上（畫面是先畫好的）
+        try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
+        _ = try await h.js("document.querySelector('label.open input[type=file]').click()")
+        try await h.waitUntil("打開選的那支") { await showing(h, flow: "全國賽") }
+        #expect(asked == 1)
     }
 }

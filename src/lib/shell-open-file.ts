@@ -12,7 +12,7 @@ function fileOf(reply: unknown): File | null {
 	if (!reply || typeof reply !== 'object') return null;
 	const { name, bytes } = reply as { name?: unknown; bytes?: unknown };
 	if (typeof name !== 'string' || typeof bytes !== 'string') return null;
-	return new File([Uint8Array.from(atob(bytes), (c) => c.charCodeAt(0))], name);
+	return new File([Uint8Array.fromBase64(bytes)], name);
 }
 
 /** 拿殼收著的那個流程檔（從「檔案」、分享選單交給 App 的）；沒有、殼出錯是 null。 */
