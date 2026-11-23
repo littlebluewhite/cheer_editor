@@ -47,7 +47,7 @@ src/lib/app-shell.ts      網頁這邊：讀 window.__cheerShell，useShellIfInA
 
 ★ 的檔是「登記表」：一張票一格，**只改自己那一格**。格子中間空一行，幾張票同時加也合得起來（試過）。
 
-- **bundle ID 是暫時的**：`com.littlebluewhite.cheereditor.temporary`（專案檔的 `PRODUCT_BUNDLE_IDENTIFIER`）。#362（網站主人加入 Apple Developer Program）留言定了以後要換。
+- **bundle ID**：`com.littlebluewhite.cheereditor`（專案檔的 `PRODUCT_BUNDLE_IDENTIFIER`）。#362 定的，已經在 Apple 登記、綁在 App Store Connect 的 App 紀錄上，不能再改。
 - **簽章**：自動簽章，沒有 Team（`DEVELOPMENT_TEAM` 不設）。現在只建模擬器版。簽章金鑰、Apple 帳號、裝置識別資料不進 repo。
 - **自訂網址 `app://local/` 不要改**：這個來源是網頁存資料（IndexedDB、localStorage）的地方，換了就找不回來。
 - 版本：`MARKETING_VERSION`（0.1.0）、`CURRENT_PROJECT_VERSION`（建置號 1）。建置號就是網頁的清單 `minShellBuild` 比的那個（docs/deploy.md「網頁的清單」），殼一開始塞給網頁的 `shellBuild` 也是它。
@@ -60,7 +60,7 @@ cd ios
 xcodebuild -project CheerEditor.xcodeproj -scheme CheerEditor \
   -destination 'platform=iOS Simulator,id=<模擬器 UDID>' -derivedDataPath .dd build
 xcrun simctl install <UDID> .dd/Build/Products/Debug-iphonesimulator/CheerEditor.app
-xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
+xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 ```
 
 - `npm run ios:web` 放的是網頁的清單（`build/web-bundle.json`）列的檔加清單自己：跟網站部署的同一包，不另外建 App 版。清單本來就不列 service worker、Workbox、`manifest.webmanifest`、PWA 圖示。
@@ -179,7 +179,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
 - 登入 cookie 在殼自己的罐子（`CookieJar`，存在 Application Support 的 `cookies-<主機>-<埠>.json`），回給網頁的不帶 `Set-Cookie`。不用系統的 `HTTPCookieStorage`：它不收 http 送來的 `Secure` cookie，連本機的伺服器就登不進去。
 - 不跟轉址；連不上網站時網頁的 `fetch` 失敗（不會當成沒登入）。
 - 一開始塞 `siteUrl`（`SitePart`），網頁的「網站網址」用它（分享連結）。管理使用者頁在 App 裡藏起來。
-- 轉到哪：上架版（Release）一定是 `SiteAddress.production`；Debug 版可以用環境變數連本機的伺服器：`SIMCTL_CHILD_CHEER_SITE_URL=http://127.0.0.1:8080/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary`。
+- 轉到哪：上架版（Release）一定是 `SiteAddress.production`；Debug 版可以用環境變數連本機的伺服器：`SIMCTL_CHILD_CHEER_SITE_URL=http://127.0.0.1:8080/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor`。
 - 管子測試 `PipeTests/ForwardPipeTests.swift` 在模擬器裡自己開一台小伺服器（`TinySite`），不連正式網站。
 
 ## 手感（#376，2026-11-22，只在 iOS 27.2 模擬器上）
@@ -219,7 +219,7 @@ Debug 版可以用環境變數 `CHEER_WEB_BUNDLE_URL` 改去 Mac 上的小網站
 ```sh
 npm run ios:web                                   # 小網站從 ios/App/Web.bundle 做出四種
 node scripts/web-bundle-test-site.mjs [new|mismatch|broken|tooOld]   # 按 Enter 換下一種
-SIMCTL_CHILD_CHEER_WEB_BUNDLE_URL=http://127.0.0.1:8787/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor.temporary
+SIMCTL_CHILD_CHEER_WEB_BUNDLE_URL=http://127.0.0.1:8787/ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 ```
 
 | 放的 | 殼該怎麼做 | 看哪裡 |
@@ -229,7 +229,7 @@ SIMCTL_CHILD_CHEER_WEB_BUNDLE_URL=http://127.0.0.1:8787/ xcrun simctl launch <UD
 | `broken` 壞掉的一包 | 換上後 10 秒退回，記成壞的 | `state.json` 的 `bad` 有它，`active` 回到上一包 |
 | `tooOld` 要新版殼 | 只抓清單，不下載、不換 | 小網站的 log 只有 `web-bundle.json` |
 
-真機用 Mac 的區網 IP（小網站聽 `0.0.0.0`）。App 容器：`xcrun simctl get_app_container <UDID> com.littlebluewhite.cheereditor.temporary data`。
+真機用 Mac 的區網 IP（小網站聽 `0.0.0.0`）。App 容器：`xcrun simctl get_app_container <UDID> com.littlebluewhite.cheereditor data`。
 
 ## 草稿（#377）
 
