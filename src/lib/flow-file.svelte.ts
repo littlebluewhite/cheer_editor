@@ -31,7 +31,7 @@ import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.svelte.js';
-import { copiesToDrop, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
+import { copiesToDrop, isEmptyUnsent, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
 import type { CloudFlow } from '#lib/server-api.js';
 import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-source.js';
 import type { DroppedRecord } from '#lib/practice-rights.js';
@@ -363,7 +363,6 @@ export class FlowFile {
 		}
 		// 紀錄跟編排分開存（ADR 0011）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
-		const stored = (await store.unsent()).find((u) => u.flowId === id);
 		const fromServer = putRecords(found.flow as Flow, records);
 		// 從離線副本換成最新的（#383 每次打開 App 都會）：手上已經有的音樂不再下載（音樂 id 換了檔就換）
 		const shown = this.#editor.session.flow;
@@ -376,10 +375,13 @@ export class FlowFile {
 		const sameAudio =
 			!!fromCopy && !copy && fromServer.audio.length === Object.keys(have).length && fromServer.audio.every((a) => a.id in have);
 		const music = await this.#editor.readMusic(audio);
+		// 讀完音樂才讀這台存著的：等的時候別的分頁記的也拿到
+		const stored = (await store.unsent()).find((u) => u.flowId === id);
 		if (!still()) return;
-		// 換成最新的（同一支）：沒傳的照開著的那支現在的，等音樂時記的、改的不會丟
+		// 換成最新的（同一支）：沒傳的照開著的那支現在的，等音樂時記的、改的不會丟；這個分頁什麼都沒有就用這台存著的（別的分頁記的）
 		const old = this.#source;
-		const saved = ('steps' in old && old.id === id ? old.steps.keptUnsent : null) ?? stored;
+		const kept = 'steps' in old && old.id === id ? old.steps.keptUnsent : null;
+		const saved = kept && !isEmptyUnsent(kept) ? kept : stored;
 		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
 		// 被新版擋住後換成最新的（#368）：換上的那支打招呼回答前也照樣擋住
 		const newVersion = this.cloud?.newVersion ?? false;

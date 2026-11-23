@@ -210,6 +210,31 @@ describe('換成最新的時', () => {
 		expect(offline.of('c1')!.records).toHaveLength(2);
 	});
 
+	it('換的時候在讀音樂、這個分頁沒有沒傳的，別的分頁記了一次：換上後這邊再記一次，別的分頁記的那次還在這台', async () => {
+		const offline = fakeOfflineStore();
+		const s = await open(offline);
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		const release = await staleWhileLoading(s);
+		// 別的分頁（同一台）記的：存進這台
+		await offline.store.saveUnsent({
+			flowId: 'c1',
+			flowName: '測試',
+			records: [
+				{
+					record: { actionId: 'x1', attempt: { id: 'tothertab0001', date: '2026-11-07', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } },
+					row: { id: 'tothertab0001', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false }
+				}
+			],
+			amends: [],
+			dropped: []
+		});
+		release();
+		await settle();
+		await recordOne();
+		expect(offline.of('c1')!.records.map((r) => r.record.attempt.id)).toContain('tothertab0001');
+		expect(offline.of('c1')!.records).toHaveLength(2);
+	});
+
 
 	it('連回來被擋、換上的那支打招呼還沒回：照樣不能改、不能下載流程檔', async () => {
 		const s = await open();
