@@ -114,3 +114,28 @@ async fn privacy_and_support_with_a_trailing_slash_go_to_the_page() {
         assert_eq!(res.headers()["location"], to, "{path}");
     }
 }
+
+/// 自動填密碼（#395）：iPhone 照這個檔認 App 和網站是一家的。要是 JSON；
+/// 沒有這條路由的話會拿到 200.html（狀態也是 200），所以連檔案類型、內容一起比。
+#[tokio::test]
+async fn apple_app_site_association_is_json_naming_the_app() {
+    let site = built_site();
+    let res = cheer_server::app(unreachable_pool(), site.path())
+        .oneshot(
+            Request::get("/.well-known/apple-app-site-association")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers()["content-type"], "application/json");
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "webcredentials": { "apps": ["N5HMWTF697.com.littlebluewhite.cheereditor"] }
+        })
+    );
+}
