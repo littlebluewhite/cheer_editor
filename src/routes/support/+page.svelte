@@ -1,14 +1,12 @@
 <script lang="ts">
 	// 支援頁（#372，照 #327 結論留言的大綱）：支援信箱、使用說明、怎麼要求刪除帳號、家長和隊員怎麼要求、多久回、隱私權政策。
-	// 沒登入也打得開，不問伺服器。網頁版和 App 用同一份，只寫繁中。
+	// 沒登入也打得開，不問伺服器。網頁版和 App 用同一份，只寫繁中（ADR 0017 的例外）。
 	import { resolve } from '$app/paths';
 	import AccountCard from '#lib/components/AccountCard.svelte';
-	import { m } from '#lib/paraglide/messages.js';
-
-	const SUPPORT = 'support@littlebluewhite.com';
+	import { SUPPORT_EMAIL as SUPPORT } from '#lib/support-email.js';
 </script>
 
-<svelte:head><title>{m.page_title({ page: '支援' })}</title></svelte:head>
+<svelte:head><title>支援 — 流程編輯器</title></svelte:head>
 
 <AccountCard wide>
 	<article class="doc">

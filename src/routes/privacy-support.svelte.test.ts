@@ -1,7 +1,10 @@
 // 隱私權政策、支援頁（#372）：沒登入打得開、不問伺服器；兩頁互相連；
 // 首頁（登入前後）、登入頁、帳號頁、使用說明最下面有「隱私權政策・支援」，編輯畫面沒有。
 import { render, screen, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { getLocale, setLocale } from '#lib/paraglide/runtime.js';
+import { SUPPORT_EMAIL } from '#lib/support-email.js';
 import { editorPage, fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 import Privacy from './privacy/+page.svelte';
@@ -14,7 +17,7 @@ import Page from './+page.svelte';
 Element.prototype.scrollIntoView = () => {};
 
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
-const SUPPORT = 'mailto:support@littlebluewhite.com';
+const SUPPORT = `mailto:${SUPPORT_EMAIL}`;
 
 const hrefs = (name: string) => screen.queryAllByRole('link', { name }).map((a) => a.getAttribute('href'));
 
@@ -38,7 +41,7 @@ describe('隱私權政策頁', () => {
 		expect(screen.getByRole('heading', { level: 1, name: '隱私權政策' })).toBeTruthy();
 		expect(screen.getByText(/最後更新：\d{4}-\d{2}-\d{2}/)).toBeTruthy();
 		expect(hrefs('支援')).toContain('/support');
-		expect(hrefs('support@littlebluewhite.com')).toContain(SUPPORT);
+		expect(hrefs(SUPPORT_EMAIL)).toContain(SUPPORT);
 		expect(hrefs('回首頁')).toContain('/');
 	});
 
@@ -92,7 +95,7 @@ describe('支援頁', () => {
 		render(Support);
 		expect(fetch).not.toHaveBeenCalled();
 		expect(screen.getByRole('heading', { level: 1, name: '支援' })).toBeTruthy();
-		expect(hrefs('support@littlebluewhite.com')).toContain(SUPPORT);
+		expect(hrefs(SUPPORT_EMAIL)).toContain(SUPPORT);
 		expect(hrefs('使用說明')).toContain('/guide');
 		expect(hrefs('隱私權政策')).toContain('/privacy');
 		expect(hrefs('帳號頁')).toContain('/account');
@@ -141,5 +144,21 @@ describe('「隱私權政策・支援」在哪裡', () => {
 		expectFooterLinks();
 		const credits = screen.getByRole('link', { name: '第三方套件授權' }).closest('p')!;
 		expect(within(credits).getByRole('link', { name: '隱私權政策' })).toBeTruthy();
+	});
+});
+
+describe('只寫繁中的兩頁（ADR 0017 的例外）', () => {
+	it('英文畫面的分頁標題也整句是中文，不混英文的「— Routine Editor」', () => {
+		const before = getLocale();
+		onTestFinished(() => setLocale(before, { reload: false }));
+		setLocale('en', { reload: false });
+		render(Privacy);
+		expect(document.title).toBe('隱私權政策 — 流程編輯器');
+		render(Support);
+		expect(document.title).toBe('支援 — 流程編輯器');
+	});
+
+	it('支援信箱跟伺服器寄信的回覆地址（server/src/mail.rs）是同一個', () => {
+		expect(readFileSync('server/src/mail.rs', 'utf8')).toContain(`pub const SUPPORT_EMAIL: &str = "${SUPPORT_EMAIL}";`);
 	});
 });

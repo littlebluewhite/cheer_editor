@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { createServer, type OutgoingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkAppSiteAssociation } from '../../scripts/app-site-association.mjs';
+import { APP_SITE_ASSOCIATION_PATH, checkAppSiteAssociation } from '../../scripts/app-site-association.mjs';
 
-const PATH = '/.well-known/apple-app-site-association';
+const PATH = `/${APP_SITE_ASSOCIATION_PATH}`;
 const inRepo = readFileSync(new URL('../../server/apple-app-site-association.json', import.meta.url), 'utf8');
 
 describe('部署後的線上檢查：apple-app-site-association 抓得到、檔案類型對', () => {

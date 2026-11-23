@@ -1,20 +1,20 @@
 <script lang="ts">
-	// 隱私權政策（#372）：照 #327 結論留言的大綱和「更正」四點寫，台灣法律的根據在 #326。網頁版和 App 用同一份，只寫繁中。
+	// 隱私權政策（#372）：照 #327 結論留言的大綱和「更正」四點寫，台灣法律的根據在 #326。網頁版和 App 用同一份，只寫繁中（ADR 0017 的例外）。
 	// 沒登入也打得開，不問伺服器（App 裡離線也看得到）。留多久的數字對得上伺服器實際的行為：
 	// server/src/accounts.rs（登入 30 天、cookie 400 天、設密碼連結 24 小時／1 小時）、daily.rs（每天台灣時間 5 點清）、
 	// backup.rs（備份 30 天）、lockout.rs。改了那邊，這頁跟著改，最上面的日期也改。
+	// 「資料處理條款」那句只寫已經適用的：Fly.io 的要另外簽（#372），網站主人簽了再把 Fly.io 加進那句。
 	import { resolve } from '$app/paths';
 	import AccountCard from '#lib/components/AccountCard.svelte';
-	import { m } from '#lib/paraglide/messages.js';
+	import { SUPPORT_EMAIL as SUPPORT } from '#lib/support-email.js';
 
 	/** 網站主人的法定姓名（跟 App Store 上的賣家一樣）：由網站主人自己填，不寫進 issue、commit 訊息、PR 說明。 */
 	const OWNER_NAME = '〔待填：網站主人的法定姓名〕';
-	const SUPPORT = 'support@littlebluewhite.com';
 	/** 最後更新日期：改了內容就改這裡；大改（多收一種資料、多一個第三方）還要寄信給所有使用者。 */
 	const UPDATED = '2026-11-24';
 </script>
 
-<svelte:head><title>{m.page_title({ page: '隱私權政策' })}</title></svelte:head>
+<svelte:head><title>隱私權政策 — 流程編輯器</title></svelte:head>
 
 <AccountCard wide>
 	<article class="doc">
@@ -78,7 +78,7 @@
 
 		<section>
 			<h2>交給哪些服務、在哪裡</h2>
-			<p>這個服務用下面幾家公司的服務來跑。Fly.io、Neon、Cloudflare、Resend 都有自己的資料處理條款。</p>
+			<p>這個服務用下面幾家公司的服務來跑。Neon、Cloudflare、Resend 的服務條款附有它們的資料處理條款。</p>
 			<div class="table-wrap">
 				<table>
 					<caption>交給哪些服務</caption>
