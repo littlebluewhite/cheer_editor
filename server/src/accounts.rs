@@ -207,20 +207,25 @@ pub(crate) fn password_mail(
     token: &str,
 ) -> Mail {
     let link = format!("{site_url}/set-password#{token}");
-    let (subject, body) = match purpose {
+    let (subject, body, privacy) = match purpose {
+        // 邀請信是告知的地方（個資法第 8 條，#372）：一句話和隱私權政策的連結，不加「我同意」。
         LinkPurpose::Invite => (
             "邀請你使用競技啦啦隊流程編輯器",
             "請點下面的連結設密碼，設好就能登入。連結 24 小時內有效，只能用一次。",
+            format!(
+                "我們會存你的 email、名字和你放上來的流程，用來登入和讓分享的人認得你。收什麼、交給誰、留多久，寫在隱私權政策：\n{site_url}/privacy\n\n"
+            ),
         ),
         LinkPurpose::Reset => (
             "設新密碼：競技啦啦隊流程編輯器",
             "請點下面的連結設新密碼。連結 1 小時內有效，只能用一次。設好後，你在其他裝置都會登出。",
+            String::new(),
         ),
     };
     Mail {
         to,
         subject: subject.into(),
-        text: format!("{name}，你好：\n\n{body}\n\n{link}\n\n不是你要的信，不用理它。\n"),
+        text: format!("{name}，你好：\n\n{body}\n\n{link}\n\n{privacy}不是你要的信，不用理它。\n"),
     }
 }
 

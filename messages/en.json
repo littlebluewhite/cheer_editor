@@ -11,6 +11,8 @@
 	"language_save_first": "You have unsaved changes. Save them before switching language.",
 	"app_name": "Cheer Routine Editor",
 	"back_home": "Home",
+	"privacy_policy": "Privacy Policy",
+	"support_page": "Support",
 	"rejected_view_only": "Not saved: you can only view this routine.",
 	"rejected_after_sent_back": "Not saved: the change before it wasn't saved, so this one doesn't count either.",
 	"rejected_too_old": "Not saved: it's been too long since you last saw this routine. Showing what it looks like now.",

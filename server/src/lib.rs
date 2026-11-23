@@ -159,6 +159,15 @@ pub fn app(state: AppState, site: &Path) -> Router {
             "/api/account/delete",
             get(my_account::delete_summary).post(my_account::request_delete),
         )
+        // App Store Connect 填的隱私權政策、支援網址後面有斜線；建出來的是 privacy.html，前端的路由不認 privacy/（#372）。
+        .route(
+            "/privacy/",
+            get(|| async { axum::response::Redirect::permanent("/privacy") }),
+        )
+        .route(
+            "/support/",
+            get(|| async { axum::response::Redirect::permanent("/support") }),
+        )
         // 建置把每頁存成 <名字>.html（例：/guide → guide.html），重新整理才打得開。
         // 找不到的路徑回前端的入口頁，讓前端自己處理路由。
         .fallback_service(

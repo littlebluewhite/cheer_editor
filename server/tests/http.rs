@@ -101,6 +101,20 @@ async fn unknown_path_gets_the_spa_entry_so_the_frontend_routes_it() {
     assert_eq!(body, "spa entry");
 }
 
+#[tokio::test]
+async fn privacy_and_support_with_a_trailing_slash_go_to_the_page() {
+    // App Store Connect 填的網址後面有斜線；建出來的是 privacy.html，前端的路由不認 privacy/（#372）
+    let site = built_site();
+    for (path, to) in [("/privacy/", "/privacy"), ("/support/", "/support")] {
+        let res = cheer_server::app(unreachable_pool(), site.path())
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::PERMANENT_REDIRECT, "{path}");
+        assert_eq!(res.headers()["location"], to, "{path}");
+    }
+}
+
 /// 自動填密碼（#395）：iPhone 照這個檔認 App 和網站是一家的。要是 JSON；
 /// 沒有這條路由的話會拿到 200.html（狀態也是 200），所以連檔案類型、內容一起比。
 #[tokio::test]

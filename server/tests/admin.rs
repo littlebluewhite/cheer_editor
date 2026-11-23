@@ -320,6 +320,19 @@ async fn list_shows_each_status(db: sqlx::PgPool) {
 }
 
 #[sqlx::test]
+async fn the_invite_says_where_the_privacy_policy_is(db: sqlx::PgPool) {
+    let s = Server::new(db);
+    let admin = s.admin().await;
+    s.add(&admin, "mei@example.com", "陳小美").await;
+    let invite = s.mails().last().cloned().unwrap();
+    assert!(
+        invite.text.contains("隱私權政策") && invite.text.contains(&format!("{SITE}/privacy\n")),
+        "{}",
+        invite.text
+    );
+}
+
+#[sqlx::test]
 async fn adding_a_user_mails_an_invite_and_the_same_email_in_other_case_is_refused(
     db: sqlx::PgPool,
 ) {

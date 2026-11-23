@@ -40,6 +40,8 @@ describe('舊網址版', () => {
 
 /** 登入才用得到的頁：舊網址版不能登入（#267），打開直接回首頁。 */
 const LOGIN_ONLY = ['account', 'forgot-password', 'login', 'set-password', 'users'];
+/** 舊網址版也打得開的頁（不用登入）：使用說明、隱私權政策和支援（#372）。 */
+const OPEN = ['guide', 'privacy', 'support'];
 const pages = Object.keys(import.meta.glob('./*/+page.svelte')).map((path) => path.split('/')[1]);
 const loads = import.meta.glob<{ load?: () => unknown }>('./*/+page.ts', { eager: true });
 
@@ -57,14 +59,14 @@ function redirectedTo(name: string): string | null {
 }
 
 describe('舊網址版：登入才用得到的頁', () => {
-	it('除了首頁、使用說明，每一頁都是登入才用得到的（多了新頁要在這裡決定）', () => {
-		expect(pages.filter((name) => name !== 'guide').sort()).toEqual(LOGIN_ONLY);
+	it('除了首頁、使用說明、隱私權政策、支援，每一頁都是登入才用得到的（多了新頁要在這裡決定）', () => {
+		expect(pages.filter((name) => !OPEN.includes(name)).sort()).toEqual(LOGIN_ONLY);
 	});
 
 	it('打開直接回首頁，看不到登入表單', () => {
 		site.old = true;
 		for (const name of LOGIN_ONLY) expect(redirectedTo(name), name).toBe('/');
-		expect(redirectedTo('guide')).toBeNull();
+		for (const name of OPEN) expect(redirectedTo(name), name).toBeNull();
 	});
 
 	it('新網址版照常打開', () => {
