@@ -38,6 +38,13 @@ describe('照情境演的假殼', () => {
 		expect(() => fake.done()).toThrow();
 	});
 
+	it('網頁說對了話、帶的東西不對（被接住了）：done 也不過', async () => {
+		const fake = playScenario(ping);
+		await fake.bridge.send('ping', { n: 2 }).catch(() => {});
+		fake.say();
+		expect(() => fake.done()).toThrow();
+	});
+
 	it('還輪不到殼說話就 say：丟錯', () => {
 		expect(() => playScenario(ping).say()).toThrow('不是殼說的');
 	});

@@ -57,7 +57,13 @@ export function playScenario({ boot, steps }: Scenario) {
 				throw new Error('情境沒有這句');
 			}
 			next++;
-			expect(body ?? null, `網頁說「${name}」帶的東西`).toEqual(step.body ?? null);
+			// 帶的東西不對也記下來：網頁接住了 reject，done() 照樣不過
+			try {
+				expect(body ?? null, `網頁說「${name}」帶的東西`).toEqual(step.body ?? null);
+			} catch (e) {
+				problems.push(`網頁說「${name}」帶的東西不對：${(e as Error).message}`);
+				throw e;
+			}
 			if (step.error !== undefined) throw new Error(step.error);
 			return step.reply ?? null;
 		},
