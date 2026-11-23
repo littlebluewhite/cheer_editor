@@ -3,6 +3,7 @@ import Foundation
 import ShellCore
 import Testing
 import UIKit
+import WebKit
 @testable import CheerEditor
 
 @MainActor
@@ -21,9 +22,10 @@ struct DraftsPipeTests {
     }
 
     /// 真的那包網頁、iPad 橫拿的大小（手機是檢視模式，不能新建），接 App 的草稿那一塊（資料夾換成暫存的）。
-    func editor(_ folder: DraftFolder) async throws -> Harness {
+    /// 網頁的資料（IndexedDB）放自己的一份：別的管子測試同時開真的那包網頁、沒接殼的草稿，會在共用的那份開 cheer-editor。
+    func editor(_ folder: DraftFolder, _ store: WKWebsiteDataStore = .nonPersistent()) async throws -> Harness {
         let h = Harness(siteRoot: try site(), parts: { [DraftsPart.inApp(outbox: $0.outbox, folder: folder)] },
-                        size: CGSize(width: 1194, height: 834))
+                        size: CGSize(width: 1194, height: 834), dataStore: store)
         try await h.load("")
         try await h.waitUntil("網頁說好了") { h.readyCount >= 1 }
         return h
@@ -79,18 +81,17 @@ struct DraftsPipeTests {
 
     @Test func 真的那包網頁_編一支本機流程_關掉再開_最近的流程有它_打開是最後的樣子() async throws {
         let folder = tempFolder()
+        let store = WKWebsiteDataStore.nonPersistent()
         do {
-            let h = try await editor(folder)
-            // 別的管子測試（沒接殼的草稿）可能在網頁的 IndexedDB 留了草稿：先清掉，等一下才看得出這次有沒有用它
-            _ = try await h.js("await new Promise((ok) => { const r = indexedDB.deleteDatabase('cheer-editor'); r.onsuccess = r.onerror = r.onblocked = ok; }); return null")
+            let h = try await editor(folder, store)
             try await newFlowWithMusic(h, folder)
             // 停手超過 1 秒才關（馬上關的在下一個測試）
             try await Task.sleep(for: .seconds(1.5))
             let dbs = try await h.js("return (await indexedDB.databases()).map((d) => d.name).join(',')") as? String ?? ""
             #expect(!dbs.split(separator: ",").contains("cheer-editor"), "草稿不是存在網頁的 IndexedDB：\(dbs)")
         }
-        // 關掉再開：新的網頁畫面，同一個資料夾
-        let h = try await editor(folder)
+        // 關掉再開：新的網頁畫面，同一個資料夾、同一份網頁資料
+        let h = try await editor(folder, store)
         try await h.waitUntil("最近的流程有它") {
             (try? await h.js("return [...document.querySelectorAll('.recent-name')].map((e) => e.textContent).join(',')")) as? String == "管子測試"
         }
