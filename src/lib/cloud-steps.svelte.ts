@@ -480,6 +480,11 @@ export class CloudSteps {
 			this.#ready = true;
 			this.link = 'online';
 			const back = this.offline;
+			// 先當有新版擋著（knownNewVersion），伺服器卻讓進來了（例：伺服器換回舊版）：不擋了
+			if (this.newVersion) {
+				this.newVersion = false;
+				this.#lock();
+			}
 			if (this.offline) {
 				this.offline = false;
 				this.#lock();

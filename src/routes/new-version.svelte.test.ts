@@ -253,6 +253,26 @@ describe('換成最新的時', () => {
 		expect(s.page.session.viewing).toBe(true);
 		expect(await menuItem('下載成流程檔')).toBeNull();
 	});
+
+	it('連回來被擋、換上的那支打招呼前伺服器換回舊版、讓它進來：可以改、可以下載流程檔', async () => {
+		const s = await open();
+		s.disconnect();
+		await settle();
+		s.state.fingerprint = 'newer-core';
+		s.state.holdRoom = true;
+		s.reconnect();
+		await settle();
+		// 舊的那支打招呼被擋的回答到之前，伺服器換回舊版（指紋對上了）：換上的那支打招呼被收（回答先留著）
+		s.state.fingerprint = CORE_FINGERPRINT;
+		s.releaseRoom(true);
+		await settle();
+		expect(s.page.editor.file.cloud!.newVersion).toBe(true);
+		s.releaseRoom();
+		await settle();
+		expect(s.page.editor.file.cloud!.newVersion).toBe(false);
+		expect(s.page.session.viewing).toBe(false);
+		expect(await menuItem('下載成流程檔')).not.toBeNull();
+	});
 });
 
 describe('被新版擋住時能記，更新後自動傳', () => {
