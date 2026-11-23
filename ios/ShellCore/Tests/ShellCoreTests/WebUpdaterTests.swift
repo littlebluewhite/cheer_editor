@@ -355,10 +355,12 @@ struct WebUpdaterTests {
     @Test func 正在檢查時再問_等那次檢查的結果() async throws {
         let u = try Updater()
         let id = u.site.publish(newFiles)
-        async let a = u.updater.check()
-        async let b = u.updater.latest()
-        let results = await [a, b]
-        #expect(results == [.downloaded(id), .downloaded(id)])
+        // 先確定檢查已經開始（抓了清單）才問；async let 兩個誰先跑不一定，latest 先跑就換成 check 是第二個、回 .busy
+        let a = Task { await u.updater.check() }
+        while u.site.asked.isEmpty { await Task.yield() }
+        let b = await u.updater.latest()
+        #expect(await [a.value, b] == [.downloaded(id), .downloaded(id)])
+        #expect(u.site.asked.filter { $0.lastPathComponent == WebBundleManifest.fileName }.count == 1)  // 沒有再檢查一次
     }
 
     @Test func 網站的檔名有空白中文_照樣抓得到() async throws {
