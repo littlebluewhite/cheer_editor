@@ -1,7 +1,7 @@
 // 頁面（App）：殼下載好新網頁（webBundleReady）不馬上換，教練回到首頁才請殼換上（#393、ADR 0025）。
 // 殼照共用情境檔演（bridge-scenarios/current/web-update.json），殼的測試跑同一份。
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { appShell } from '#lib/app-shell.js';
 import { playScenario, scenario, scenarioShell } from '#lib/scenario-shell.js';
 import { editorPage, fakeDraftStore, fakeHost, flush, menuItem } from '#lib/test-fakes.js';
@@ -22,6 +22,8 @@ function setup(fake: ReturnType<typeof playScenario>) {
 }
 
 describe('App：殼自己更新網頁', () => {
+	beforeEach(() => sessionStorage.clear());
+
 	it('編流程時新網頁下載好了：回到首頁才請殼換上', async () => {
 		const fake = scenarioShell('web-update.json', '新網頁下載好了，回到首頁時請殼換上');
 		setup(fake);
@@ -54,6 +56,22 @@ describe('App：殼自己更新網頁', () => {
 		await flush();
 		home.unmount();
 		fake.say();
+		render(Page, props);
+		await flush();
+		await settle();
+		fake.done();
+	});
+
+	it('新網頁在帳號頁時下載好了，整頁重新載入才回到首頁（登出、刪帳號、App 裡的使用說明）：照樣請殼換上', async () => {
+		const fake = scenarioShell('web-update.json', '新網頁下載好了，回到首頁時請殼換上');
+		fakeHost({ shell: appShell(fake.bridge) });
+		const props = editorPage(null, { draftStore: fakeDraftStore().store }).props;
+		const home = render(Page, props);
+		await flush();
+		home.unmount();
+		fake.say();
+		// 重新載入：網頁裡記著的都沒了，殼換一個新的（殼本身不變）
+		fakeHost({ shell: appShell(fake.bridge) });
 		render(Page, props);
 		await flush();
 		await settle();

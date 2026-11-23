@@ -16,9 +16,31 @@ export const SETTLE_MS = 1000;
 /**
  * 每個殼下載好新網頁了沒。殼只說一次 webBundleReady：第一次跟著就一直聽著，
  * 在帳號頁（首頁不在畫面上，同一個網頁換頁）時殼說的也記著，回到首頁照樣換。
- * 使用說明在 App 裡是整頁重新載入（新分頁的連結殼在原地開）：那時殼說的這裡收不到，要等下次打開 App。
+ * 整頁重新載入（登出、刪帳號回首頁，App 裡的使用說明：新分頁的連結殼在原地開）這裡就清掉了，
+ * 所以聽到的也記在 sessionStorage（DOWNLOADED_KEY），重新載入後回到首頁照樣換。
+ * 使用說明那一頁上殼才說的這裡收不到，要等下次打開 App。
  */
 const ready = new WeakMap<Shell, { downloaded: boolean }>();
+
+/** 殼說過新網頁下載好了、還沒請它換（重新載入也留著；App 關掉就沒了，殼下次打開自己換）。 */
+const DOWNLOADED_KEY = 'cheer-editor:webBundleReady';
+
+/** sessionStorage 讀寫（讀不到、寫不進去當沒有）。 */
+function remembered(): boolean {
+	try {
+		return sessionStorage.getItem(DOWNLOADED_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+function remember(downloaded: boolean) {
+	try {
+		if (downloaded) sessionStorage.setItem(DOWNLOADED_KEY, '1');
+		else sessionStorage.removeItem(DOWNLOADED_KEY);
+	} catch {
+		// 存不了：只記在網頁裡
+	}
+}
 
 /**
  * 跟著殼的新網頁：回傳 cameHome（每次回到首頁叫）和 stop。
@@ -29,8 +51,11 @@ export function followWebUpdate(shell: Shell, idleAtHome: () => boolean) {
 	if (!shell.can(WEB_UPDATE_FEATURE)) return { cameHome() {}, stop() {} };
 	let bundle = ready.get(shell);
 	if (!bundle) {
-		const heard = { downloaded: false };
-		shell.on('webBundleReady', () => (heard.downloaded = true));
+		const heard = { downloaded: remembered() };
+		shell.on('webBundleReady', () => {
+			heard.downloaded = true;
+			remember(true);
+		});
 		ready.set(shell, heard);
 		bundle = heard;
 	}
@@ -43,6 +68,7 @@ export function followWebUpdate(shell: Shell, idleAtHome: () => boolean) {
 			timer = setTimeout(() => {
 				if (!state.downloaded || !idleAtHome()) return;
 				state.downloaded = false;
+				remember(false);
 				shell.send('useNewWebBundle').catch(() => {});
 			}, SETTLE_MS);
 		},
