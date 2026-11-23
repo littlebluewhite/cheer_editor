@@ -427,7 +427,9 @@ export class FlowFile {
 		cloud.onstale = async (lost) => {
 			if (this.cloud !== cloud) return;
 			await this.openCloud(id, true, stillOpen);
-			if (lost) this.#editor.session.notice = (lost === 1 ? m.cloud_replaced_lost_one : m.cloud_replaced_lost)({ count: lost });
+			// 換上了才說（等的時候回首頁、開了別的就不說）
+			const now = this.#source;
+			if (lost && 'steps' in now && now.id === id && now.steps !== cloud) this.#editor.session.notice = (lost === 1 ? m.cloud_replaced_lost_one : m.cloud_replaced_lost)({ count: lost });
 		};
 		await this.#keepCopy(
 			copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 },

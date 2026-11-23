@@ -177,9 +177,11 @@ function holdMusic(s: Awaited<ReturnType<typeof open>>) {
 }
 
 /** 開著時斷線、伺服器換了新版，連回來被擋（換成最新的那支還在讀音樂）。 */
-async function staleWhileLoading(s: Awaited<ReturnType<typeof open>>) {
-	s.disconnect();
-	await settle();
+async function staleWhileLoading(s: Awaited<ReturnType<typeof open>>, disconnect = true) {
+	if (disconnect) {
+		s.disconnect();
+		await settle();
+	}
 	s.state.fingerprint = 'newer-core';
 	const release = holdMusic(s);
 	s.reconnect();
@@ -196,6 +198,24 @@ describe('換成最新的時', () => {
 		release();
 		await settle();
 		expect(s.page.session.flow).toBeNull();
+	});
+
+	it('斷線時改的步沒送到就被擋、換的時候在讀音樂，這時回首頁了：不說那幾步沒存進去', async () => {
+		const s = await open();
+		s.state.holdRoom = true;
+		await fromMenu('流程設定');
+		await fireEvent.change(screen.getByLabelText('流程名字'), { target: { value: '我改的名字' } });
+		await fireEvent.click(screen.getByRole('button', { name: '關閉' }));
+		await settle();
+		s.disconnect();
+		await settle();
+		s.state.holdRoom = false;
+		const release = await staleWhileLoading(s, false);
+		s.page.session.open(null);
+		await settle();
+		release();
+		await settle();
+		expect(s.page.session.notice ?? '').not.toContain('沒存進去');
 	});
 
 	it('換的時候在讀音樂、這時記了一次，換上後又記一次：兩次都留在這台', async () => {
