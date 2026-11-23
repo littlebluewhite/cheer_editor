@@ -11,7 +11,7 @@ Fly app `littlebluewhite`，新加坡 `sin`，一台 shared-cpu-1x 512 MB，一�
 2. 全過才 `flyctl deploy --ha=false`（只要一台：在場的人、全上誰拿著哪幾組只放這台的記憶體，ADR 0015）：在 Fly 的 builder 上照 `Dockerfile` 建映像檔（建好前端，不設 `BASE_PATH`，放進伺服器的映像檔）。
 3. `fly.toml` 的 `release_command` 在一台臨時機器上跑 `/app/cheer-server migrate`（資料表遷移）。**沒跑成就不部署**，舊版照常接流量。
 4. `bluegreen`：在旁邊開一台新的，`/health` 過了才切過去，不停機。切的時候 WebSocket 會斷，前端自己重連。
-5. 部署完跑 `npm run check:live`（`scripts/check-live.mjs`）：`/health` 回 `ok`；網頁的清單（下面「網頁的清單」）抓得到，清單裡每個檔抓下來大小和 SHA-256 都對得上；音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。
+5. 部署完跑 `npm run check:live`（`scripts/check-live.mjs`）：`/health` 回 `ok`；網頁的清單（下面「網頁的清單」）抓得到，清單裡每個檔抓下來大小和 SHA-256 都對得上；自動填密碼用的 `/.well-known/apple-app-site-association`（下面「自動填密碼用的檔」）是 JSON、跟 repo 裡的一樣；音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。
    伺服器的測試用假的 R2，看不到 CORS。沒過不會倒回，只會變紅。bucket 的網址放 repo 的 variable `R2_MUSIC_BUCKET_URL`
    （`https://<帳號 id>.r2.cloudflarestorage.com/<bucket>`，不是金鑰）。本機也能跑：`R2_MUSIC_BUCKET_URL=… npm run check:live`。
 
@@ -333,7 +333,15 @@ App 的殼照這份清單從網站抓新版網頁換上（ADR 0025）。網址�
 
 找不到的路徑伺服器回 `200.html`、狀態還是 200，所以殼和 `check:live` 都不看狀態碼：清單要是看得懂的 JSON，每個檔的大小、SHA-256 都要對得上。部署時新舊兩台換手的那一下，可能拿到新清單、舊檔，殼就整包丟掉、下次再抓。
 
-本機試線上檢查：`npm run build`，用一個送 `build/`、找不到就回 `200.html` 的小伺服器（或 `cargo run`）開起來，`SITE_URL=http://127.0.0.1:8080 npm run check:live`（沒設 `R2_MUSIC_BUCKET_URL` 那條會紅，正常）。
+本機試線上檢查：`npm run build`，用一個送 `build/`、找不到就回 `200.html` 的小伺服器（或 `cargo run`）開起來，`SITE_URL=http://127.0.0.1:8080 npm run check:live`（沒設 `R2_MUSIC_BUCKET_URL` 那條會紅，正常；`apple-app-site-association` 是伺服器的路由，小伺服器沒有、那條也會紅，用 `cargo run` 才會過）。
+
+## 自動填密碼用的檔
+
+App 裡要能填 iPhone 存的網站密碼（#395），網站要送 **`/.well-known/apple-app-site-association`**：寫著 App 的 Team ID 和 bundle ID（`N5HMWTF697.com.littlebluewhite.cheereditor`），iPhone 照它認 App 和網站是一家的。App 那邊是 `ios/App/CheerEditor.entitlements` 的 `webcredentials:littlebluewhite.com`（ios/README.md）。
+
+- 檔在 `server/apple-app-site-association.json`，伺服器編譯時包進去（`server/src/lib.rs` 的一條路由），檔案類型 `application/json`。不放 `static/`：沒有副檔名，`ServeDir` 給不出 JSON 的檔案類型；也會跟著進網頁的清單和 App。不放 `docs/`：不進映像檔。
+- Team ID 可以公開（ADR 0023）。換 Team ID 或 bundle ID 就改這個檔，`server/tests/http.rs` 的測試跟著改。
+- `check:live` 比正式站送的跟 repo 裡的這個檔：要 200、不轉址、`application/json`、內容一樣（找不到的路徑會拿到 `200.html`、狀態也是 200，只看狀態碼會被騙）。
 
 ## App（iPhone、iPad）
 

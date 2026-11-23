@@ -41,6 +41,11 @@ const SPA_ENTRY: &str = "200.html";
 /// 傳上雲端的流程（flow.json 的內容，不含音樂）最大幾個位元組。前端先擋、413 也說太大（src/lib/server-api.ts 的 MAX_CLOUD_FLOW_BYTES）。
 const UPLOAD_LIMIT: usize = 16 * 1024 * 1024;
 
+/// 自動填密碼用的檔（#395）：iPhone 照它認 App 和這個網站是一家的，App 裡就能填網站存的密碼。
+/// 放在 `server/`（`docs/` 不進映像檔）；部署後的線上檢查（`scripts/check-live.mjs`）拿同一個檔比。
+/// 用路由送不放 `static/`：沒有副檔名的檔 `ServeDir` 給不了 JSON 的檔案類型，放 `static/` 也會跟著進網頁的清單和 App。
+const APPLE_APP_SITE_ASSOCIATION: &str = include_str!("../apple-app-site-association.json");
+
 /// `migrations/` 底下的遷移，編譯時包進程式；部署前（`cheer-server migrate`）和伺服器啟動時跑（[`migrate`]）。
 /// 資料庫裡多了這版沒有的遷移（新版部署過，又倒回舊版）照樣過：
 /// 一次部署只加不刪（docs/deploy.md），舊版用多出來的表、欄位也沒事。
@@ -78,6 +83,15 @@ pub fn app(state: AppState, site: &Path) -> Router {
     Router::new()
         // 健康檢查不碰資料庫：Neon 免費版沒人用時才睡得著。
         .route("/health", get(|| async { "ok" }))
+        .route(
+            "/.well-known/apple-app-site-association",
+            get(|| async {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    APPLE_APP_SITE_ASSOCIATION,
+                )
+            }),
+        )
         .route("/api/me", get(accounts::me))
         .route("/api/login", post(accounts::login))
         .route("/api/logout", post(accounts::logout))
