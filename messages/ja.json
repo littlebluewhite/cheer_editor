@@ -646,6 +646,7 @@
 	"account_unsent_count_one": "{n} 件",
 	"account_unsent_count": "{n} 件",
 	"account_unsent_discard": "破棄してログアウト",
+	"account_unsent_discard_delete": "破棄して削除をリクエスト",
 	"account_unsent_stay": "まだログアウトしない",
 	"account_home_screen_title": "ホーム画面に追加すると、未送信の記録が消えません",
 	"account_home_screen_lead": "Safari で記録したものは、7 日間このサイトを開かないと消えます。ホーム画面に追加したものは消えません。",

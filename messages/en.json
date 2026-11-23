@@ -646,6 +646,7 @@
 	"account_unsent_count_one": "{n} rep",
 	"account_unsent_count": "{n} reps",
 	"account_unsent_discard": "Discard and sign out",
+	"account_unsent_discard_delete": "Discard and request deletion",
 	"account_unsent_stay": "Don't sign out yet",
 	"account_home_screen_title": "Add to Home Screen so reps not yet uploaded aren't wiped",
 	"account_home_screen_lead": "Reps recorded in Safari are wiped if you don't open this site for 7 days; from the Home Screen they aren't.",

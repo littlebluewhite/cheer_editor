@@ -179,7 +179,7 @@ describe('我的帳號頁', () => {
 		expect(await offline.store.unsent()).toEqual([]);
 	});
 
-	it('要求刪除帳號：沒傳的紀錄傳不上去（例：流程已經不在了），先不刪，跳小框說傳不上去；「先不要登出」什麼都不做，「丟掉，登出」才送出要求', async () => {
+	it('要求刪除帳號：沒傳的紀錄傳不上去（例：流程已經不在了），先不刪，跳小框說傳不上去；「先不要登出」什麼都不做，「丟掉，要求刪除帳號」才送出要求', async () => {
 		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
 		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
 		const { state, went, offline } = await accountPage(lin.email, [{ flowId: 'gone', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }]);
@@ -199,7 +199,7 @@ describe('我的帳號頁', () => {
 		expect(state.signedIn).toBe(lin.email);
 		expect(await offline.store.unsent()).toHaveLength(1);
 
-		await confirm('丟掉，登出');
+		await confirm('丟掉，要求刪除帳號');
 		expect(state.users[0].disabled).toBe(true);
 		expect(went).toEqual(['/']);
 		expect(await offline.store.unsent()).toEqual([]);
