@@ -46,7 +46,7 @@ describe('App：殼自己更新網頁', () => {
 		fake.done();
 	});
 
-	it('新網頁在別頁（使用說明、帳號）時下載好了：回到首頁照樣請殼換上', async () => {
+	it('新網頁在帳號頁時下載好了：回到首頁照樣請殼換上', async () => {
 		const fake = scenarioShell('web-update.json', '新網頁下載好了，回到首頁時請殼換上');
 		fakeHost({ shell: appShell(fake.bridge) });
 		const props = editorPage(null, { draftStore: fakeDraftStore().store }).props;
