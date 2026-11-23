@@ -11,6 +11,8 @@
 	"language_save_first": "有還沒存的修改，先存檔再換語言。",
 	"app_name": "競技啦啦隊流程編輯器",
 	"back_home": "回首頁",
+	"privacy_policy": "隱私權政策",
+	"support_page": "支援",
 	"rejected_view_only": "沒存進去：你只能看這支流程",
 	"rejected_after_sent_back": "沒存進去：前一步沒存進去，這一步也不算",
 	"rejected_too_old": "沒存進去：離你上次看到太久了，換成現在的樣子",

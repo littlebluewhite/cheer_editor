@@ -1619,7 +1619,7 @@
 					href="third-party-licenses.txt"
 					target="_blank"
 					rel="noopener">第三方套件授權</a
-				>。
+				>。<a href={resolve('/privacy')}>隱私權政策</a>・<a href={resolve('/support')}>支援</a>
 			</p>
 		</main>
 	</div>

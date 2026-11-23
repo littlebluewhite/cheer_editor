@@ -11,6 +11,7 @@
 	import AccountCard from '#lib/components/AccountCard.svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import Modal from '#lib/components/Modal.svelte';
+	import PrivacyLinks from '#lib/components/PrivacyLinks.svelte';
 	import UnsentLogout from '#lib/components/UnsentLogout.svelte';
 	import { host } from '#lib/host.js';
 	import { appDevice } from '#lib/app-shell.js';
@@ -238,6 +239,7 @@
 			{/if}
 		</div>
 	{/if}
+	<PrivacyLinks />
 </AccountCard>
 {#if deleting && !unsentAtLogout}
 	{@const d = deleting}

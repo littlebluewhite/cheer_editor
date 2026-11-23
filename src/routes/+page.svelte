@@ -48,6 +48,7 @@
 	import { localDate } from '#lib/local-date.js';
 	import { NEW_SITE_URL, OLD_SITE } from '#lib/old-site.js';
 	import AccountMenu from '#lib/components/AccountMenu.svelte';
+	import PrivacyLinks from '#lib/components/PrivacyLinks.svelte';
 	import { composing } from '#lib/ime.js';
 	import { joinText, reasonText, whyText } from '#lib/reason-text.js';
 	import { droppedTexts } from '#lib/cloud-steps.svelte.js';
@@ -1664,6 +1665,7 @@
 				</section>
 			</div>
 			<section class="start" class:narrow>{@render startForm()}</section>
+			<div class="home-foot"><PrivacyLinks /></div>
 		</div>
 	{:else}
 		{#if OLD_SITE}
@@ -1710,6 +1712,7 @@
 				{/if}
 				<p class="recent-note" role="status">{discardNote}</p>
 			</section>
+			<div class="home-foot"><PrivacyLinks /></div>
 		</div>
 	{/if}
 	{#if discarding}
@@ -3510,6 +3513,10 @@
 		gap: 24px 40px;
 		max-width: 1100px;
 		padding: 0 24px 48px;
+	}
+	/* 「隱私權政策・支援」（#372）：首頁最下面一整行 */
+	.home-foot {
+		grid-column: 1 / -1;
 	}
 	.home-bar {
 		grid-column: 1 / -1;
