@@ -134,6 +134,22 @@ export function isEmptyUnsent(u: UnsentRecords): boolean {
 	return !u.records.length && !u.amends.length && !u.dropped.length;
 }
 
+/**
+ * 這個分頁的和這台存著的（別的分頁可能也存了）合起來：記的、沒存進去的照那一次的 id 只留一份，
+ * 改、刪、救回一樣的只留一份；兩邊都有的用這個分頁的，存著的多的接在後面。
+ */
+export function mergeUnsent(mine: UnsentRecords, stored: UnsentRecords): UnsentRecords {
+	const recordIds = new Set(mine.records.map((r) => r.record.attempt.id));
+	const amends = new Set(mine.amends.map((a) => JSON.stringify(a)));
+	const droppedIds = new Set(mine.dropped.map((d) => d.id));
+	return {
+		...mine,
+		records: [...mine.records, ...stored.records.filter((r) => !recordIds.has(r.record.attempt.id))],
+		amends: [...mine.amends, ...stored.amends.filter((a) => !amends.has(JSON.stringify(a)))],
+		dropped: [...mine.dropped, ...stored.dropped.filter((d) => !droppedIds.has(d.id))]
+	};
+}
+
 /** 存進去的樣子（帶版號）。 */
 export function storedUnsent(u: UnsentRecords): unknown {
 	return { v: VERSION, ...structuredClone(u) };

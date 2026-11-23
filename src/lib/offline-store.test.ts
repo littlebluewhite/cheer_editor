@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	copiesToDrop,
 	isVolatileSafari,
+	mergeUnsent,
 	readCopy,
 	readUnsent,
 	storedCopy,
@@ -55,6 +56,31 @@ describe('離線存放存的樣子', () => {
 			dropped: [row]
 		};
 		expect(unsentCount(u)).toBe(2);
+	});
+});
+
+describe('這個分頁和這台存著的都有沒傳的（換成最新的那支時）：合起來，同一次只留一份', () => {
+	const other = { ...record, attempt: { ...record.attempt, id: 'tzzz000yyy111' } };
+	const otherRow = { ...row, id: 'tzzz000yyy111' };
+	const del = (id: string) => ({ ids: [id], request: { kind: 'deleteRecords' as const, ids: [id] } });
+
+	it('這個分頁記的、別的分頁記的都留著；兩邊都有的同一次、同一個刪只留一份，這個分頁的優先', () => {
+		const mine: UnsentRecords = { flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [del('tdef456abc123')], dropped: [row] };
+		const changed = { ...record, attempt: { ...record.attempt, marks: { p1: '✗' as const } } };
+		const stored: UnsentRecords = {
+			flowId: 'c1',
+			flowName: '舊名字',
+			records: [{ record: changed, row }, { record: other, row: otherRow }],
+			amends: [del('tdef456abc123'), del('tqwe123rty456')],
+			dropped: [row, otherRow]
+		};
+		expect(mergeUnsent(mine, stored)).toEqual({
+			flowId: 'c1',
+			flowName: '區賽',
+			records: [{ record, row }, { record: other, row: otherRow }],
+			amends: [del('tdef456abc123'), del('tqwe123rty456')],
+			dropped: [row, otherRow]
+		});
 	});
 });
 

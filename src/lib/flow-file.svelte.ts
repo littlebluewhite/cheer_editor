@@ -31,7 +31,7 @@ import type { DraftInfo } from '#lib/file/draft.js';
 import { flowFileName, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import type { Editor } from '#lib/editor.svelte.js';
 import { MAX_CLOUD_AUDIO_BYTES, type MusicLibrary } from '#lib/music-library.svelte.js';
-import { copiesToDrop, isEmptyUnsent, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
+import { copiesToDrop, isEmptyUnsent, mergeUnsent, unsentCount, type OfflineCopy } from '#lib/offline-store.js';
 import type { CloudFlow } from '#lib/server-api.js';
 import { LOCAL, whatCanDo, type Abilities, type FlowSource } from '#lib/flow-source.js';
 import type { DroppedRecord } from '#lib/practice-rights.js';
@@ -378,10 +378,10 @@ export class FlowFile {
 		// 讀完音樂才讀這台存著的：等的時候別的分頁記的也拿到
 		const stored = (await store.unsent()).find((u) => u.flowId === id);
 		if (!still()) return;
-		// 換成最新的（同一支）：沒傳的照開著的那支現在的，等音樂時記的、改的不會丟；這個分頁什麼都沒有就用這台存著的（別的分頁記的）
+		// 換成最新的（同一支）：沒傳的照開著的那支現在的，等音樂時記的、改的不會丟；這台存著的（別的分頁記的）也合進來
 		const old = this.#source;
 		const kept = 'steps' in old && old.id === id ? old.steps.keptUnsent : null;
-		const saved = kept && !isEmptyUnsent(kept) ? kept : stored;
+		const saved = kept && !isEmptyUnsent(kept) ? (stored ? mergeUnsent(kept, stored) : kept) : stored;
 		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
 		// 被新版擋住後換成最新的（#368）：換上的那支打招呼回答前也照樣擋住
 		const newVersion = this.cloud?.newVersion ?? false;
