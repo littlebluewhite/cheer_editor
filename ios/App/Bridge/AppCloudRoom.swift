@@ -37,6 +37,9 @@ final class AppRoomSocket: NSObject, RoomSocketConnection {
         config.urlCache = nil
         let session = URLSession(configuration: config, delegate: Delegate(socket), delegateQueue: .main)
         let task = session.webSocketTask(with: request)
+        // 預設一則最多 1 MiB：紀錄多的流程，伺服器連上時一次送的全部紀錄會超過，每次連都斷在同一個地方。
+        // 跟伺服器（axum 的 WebSocket）一樣收到 64 MiB
+        task.maximumMessageSize = 64 << 20
         socket.session = session
         socket.task = task
         task.resume()
