@@ -229,15 +229,26 @@ pub async fn request_delete(
         return Ok(StatusCode::CONFLICT.into_response());
     }
     let mut tx = state.db.begin().await?;
+    // 改的時候再看一次是不是管理員：上面讀過以後才被換成管理員的也不停用
     let done = sqlx::query(
-        "UPDATE users SET disabled_at = $1, delete_requested_at = $1 WHERE id = $2 AND disabled_at IS NULL",
+        "UPDATE users SET disabled_at = $1, delete_requested_at = $1
+         WHERE id = $2 AND disabled_at IS NULL AND NOT is_admin",
     )
     .bind(state.clock.now())
     .bind(user_id)
     .execute(&mut *tx)
     .await?;
     if done.rows_affected() == 0 {
-        return Ok(StatusCode::UNAUTHORIZED.into_response());
+        let admin: Option<bool> = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let status = if admin == Some(true) {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::UNAUTHORIZED
+        };
+        return Ok(status.into_response());
     }
     for sql in [
         "DELETE FROM sessions WHERE user_id = $1",
