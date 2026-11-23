@@ -25,6 +25,7 @@ import { browserTabChannel, type OpenTabChannel } from '#lib/tab-channel.js';
 import { httpServer, type ServerAdapter } from '#lib/server-api.js';
 import type { OfflineStore } from '#lib/offline-store.js';
 import { host } from '#lib/host.js';
+import { OPEN_FILE_FEATURE, shellFilePicker } from '#lib/shell-open-file.js';
 import { browserNetwork, type NetworkAdapter } from '#lib/network.js';
 
 /** 編輯器 module 收的 adapter：碰瀏覽器的都在這裡。 */
@@ -35,7 +36,7 @@ export interface EditorAdapters {
 	createSaver: () => FileSaver;
 	/** 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載。 */
 	download: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome>;
-	/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge）；null 是瀏覽器不能（照舊用選檔欄位）。 */
+	/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge；App 裡請殼叫出選檔畫面，#384）；null 是瀏覽器不能（照舊用選檔欄位）。 */
 	pickFlowFile: (() => Promise<PickedFile | null>) | null;
 	/** 解碼音樂檔。 */
 	decode: (bytes: ArrayBuffer) => Promise<DecodedAudio>;
@@ -64,7 +65,7 @@ export function browserAdapters(): EditorAdapters {
 		createEngine: createWebAudioEngine,
 		createSaver: () => createBrowserSaver(),
 		download: downloadFile,
-		pickFlowFile: browserFilePicker(),
+		pickFlowFile: host().shell.can(OPEN_FILE_FEATURE) ? shellFilePicker(host().shell, () => createBrowserSaver()) : browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: host().createDraftStore(),
 		openTabChannel: browserTabChannel(),

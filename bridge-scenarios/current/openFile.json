@@ -1,0 +1,55 @@
+{
+	"about": "從「檔案」或 LINE 打開流程檔、App 裡按「開啟流程檔」（#384）：殼不拆檔，只把檔名和位元組（base64）交給網頁，網頁照開檔的規則打開（拆兩層、錯誤訊息、有沒存的修改先問）。「檔案」點 .cheer、分享選單把 .zip、.cheer 交給 App 時，殼先收著；App 開著就說 fileOpened，網頁再拿（takeOpenedFile）；App 剛打開，網頁一開始就先拿，拿到就開它，不開上次那支。拿過就沒了：重新載入不會又打開。按「開啟流程檔」時網頁請殼叫出選檔畫面（pickFlowFile，選得到 .zip、.cheer），按取消回 null。bytes 是一支叫「全國賽」、場地 9 條直的空流程（src/lib/core 的 writeFlowFile 寫的）。",
+	"scenarios": [
+		{
+			"name": "App 開著時從「檔案」或 LINE 打開：殼說一聲，網頁拿那個檔打開",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["openFile"] },
+			"steps": [
+				{ "from": "web", "name": "takeOpenedFile", "reply": null },
+				{ "from": "shell", "name": "fileOpened" },
+				{
+					"from": "web",
+					"name": "takeOpenedFile",
+					"reply": {
+						"name": "全國賽.cheer",
+						"bytes": "UEsDBBQAAAAIAMY4eF3dPRWf2AAAACYBAAAJAAAAZmxvdy5qc29uNY89TgMxEIXv8moXWZAQuKWioAmIBqUwzixY8k9kj/nRyiUVV+AA6VPnOJFyjMzuJp393ps33wzoUw6GXygXlyJ0d6PQ+/QFPSCaQNA4/G4P/3/H3R5iOfLr0Suc3aZA3yl485MqS/CTMjtrPJoCu0DL6kkiA8ZizpUUgov3HybyE1no64UI5vuxFmcnobualefExs/K7ULKAoU3AYR+XSmYunZpfhZ6DxT5bMyXyBXjf4ATTvSdQJ9jDyLE6r1UCK1s2qSRrjWZtbVwCss0AU9b7KVp1doJUEsBAhQAFAAAAAgAxjh4Xd09FZ/YAAAAJgEAAAkAAAAAAAAAAAAAAAAAAAAAAGZsb3cuanNvblBLBQYAAAAAAQABADcAAAD/AAAAAAA="
+					}
+				}
+			]
+		},
+		{
+			"name": "點流程檔打開 App：網頁一開始先拿那個檔；拿過就沒了，重新載入不會又打開",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["openFile"] },
+			"steps": [
+				{
+					"from": "web",
+					"name": "takeOpenedFile",
+					"reply": {
+						"name": "全國賽.cheer",
+						"bytes": "UEsDBBQAAAAIAMY4eF3dPRWf2AAAACYBAAAJAAAAZmxvdy5qc29uNY89TgMxEIXv8moXWZAQuKWioAmIBqUwzixY8k9kj/nRyiUVV+AA6VPnOJFyjMzuJp393ps33wzoUw6GXygXlyJ0d6PQ+/QFPSCaQNA4/G4P/3/H3R5iOfLr0Suc3aZA3yl485MqS/CTMjtrPJoCu0DL6kkiA8ZizpUUgov3HybyE1no64UI5vuxFmcnobualefExs/K7ULKAoU3AYR+XSmYunZpfhZ6DxT5bMyXyBXjf4ATTvSdQJ9jDyLE6r1UCK1s2qSRrjWZtbVwCss0AU9b7KVp1doJUEsBAhQAFAAAAAgAxjh4Xd09FZ/YAAAAJgEAAAkAAAAAAAAAAAAAAAAAAAAAAGZsb3cuanNvblBLBQYAAAAAAQABADcAAAD/AAAAAAA="
+					}
+				},
+				{ "from": "web", "name": "takeOpenedFile", "reply": null }
+			]
+		},
+		{
+			"name": "App 裡按「開啟流程檔」：殼叫出選檔畫面，選了回那個檔",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["openFile"] },
+			"steps": [
+				{
+					"from": "web",
+					"name": "pickFlowFile",
+					"reply": {
+						"name": "全國賽.zip",
+						"bytes": "UEsDBBQAAAAIAMY4eF3dPRWf2AAAACYBAAAJAAAAZmxvdy5qc29uNY89TgMxEIXv8moXWZAQuKWioAmIBqUwzixY8k9kj/nRyiUVV+AA6VPnOJFyjMzuJp393ps33wzoUw6GXygXlyJ0d6PQ+/QFPSCaQNA4/G4P/3/H3R5iOfLr0Suc3aZA3yl485MqS/CTMjtrPJoCu0DL6kkiA8ZizpUUgov3HybyE1no64UI5vuxFmcnobualefExs/K7ULKAoU3AYR+XSmYunZpfhZ6DxT5bMyXyBXjf4ATTvSdQJ9jDyLE6r1UCK1s2qSRrjWZtbVwCss0AU9b7KVp1doJUEsBAhQAFAAAAAgAxjh4Xd09FZ/YAAAAJgEAAAkAAAAAAAAAAAAAAAAAAAAAAGZsb3cuanNvblBLBQYAAAAAAQABADcAAAD/AAAAAAA="
+					}
+				}
+			]
+		},
+		{
+			"name": "選檔畫面按取消：回 null，不開",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["openFile"] },
+			"steps": [{ "from": "web", "name": "pickFlowFile", "reply": null }]
+		}
+	]
+}

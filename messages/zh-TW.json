@@ -1137,6 +1137,8 @@
 	"editor_full_out": "全上",
 	"editor_leave_unsent_one": "還有 {n} 步沒送到，離開就不見了",
 	"editor_leave_unsent": "還有 {n} 步沒送到，離開就不見了",
+	"file_open_after_unsent_one": "還有 {n} 步沒送到雲端：送到了再打開「{name}」一次",
+	"file_open_after_unsent": "還有 {n} 步沒送到雲端：送到了再打開「{name}」一次",
 	"editor_leave_discard_one": "離開（丟掉 {n} 步）",
 	"editor_leave_discard": "離開（丟掉 {n} 步）",
 	"editor_stay": "留下來",

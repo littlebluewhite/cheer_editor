@@ -4,6 +4,13 @@ import UIKit
 
 final class ShellViewController: UIViewController {
     private var shell: WebShell?
+    private var context: ShellContext?
+
+    /// 「檔案」、分享選單交給 App 的流程檔（#384）：交給網頁打開。App 裡沒有網頁（沒跑 npm run ios:web）就不理。
+    func openFile(_ url: URL) {
+        loadViewIfNeeded()
+        context?.openFile?.handOver(url)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -36,5 +43,6 @@ final class ShellViewController: UIViewController {
         view.addSubview(feel)
         shell.webView.load(URLRequest(url: BundledSite.home))
         self.shell = shell
+        self.context = context
     }
 }
