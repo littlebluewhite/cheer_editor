@@ -55,7 +55,7 @@ export async function release({ root, sh, upload, log = console.log }) {
 	const leaks = devSiteOutsideDebug(root);
 	if (leaks.length > 0)
 		throw new Stop(`上架版找得到改網址的設定（要包在 #if DEBUG 裡、不能在 #else）：\n${leaks.join('\n')}`);
-	const conditions = buildSetting(sh(xcodebuild, ['-showBuildSettings', ...target(root), '-configuration', 'Release']), 'SWIFT_ACTIVE_COMPILATION_CONDITIONS');
+	const conditions = buildSetting(sh('xcodebuild', ['-showBuildSettings', ...target(root), '-configuration', 'Release']), 'SWIFT_ACTIVE_COMPILATION_CONDITIONS');
 	if (conditions.split(/\s+/).includes('DEBUG'))
 		throw new Stop(`上架版（Release）也開了 DEBUG（SWIFT_ACTIVE_COMPILATION_CONDITIONS = ${conditions}），改網址的設定會跟著進去。`);
 
@@ -66,7 +66,7 @@ export async function release({ root, sh, upload, log = console.log }) {
 	const simulator = newestIPhone(sh('xcrun', ['simctl', 'list', 'devices', 'available', '--json']));
 	try {
 		sh('swift', ['test'], { cwd: join(root, 'ios/ShellCore'), show: true });
-		sh(xcodebuild, ['test', ...target(root), '-destination', `platform=iOS Simulator,id=${simulator}`, '-derivedDataPath', join(root, 'ios/.dd')], { show: true });
+		sh('xcodebuild', ['test', ...target(root), '-destination', `platform=iOS Simulator,id=${simulator}`, '-derivedDataPath', join(root, 'ios/.dd')], { show: true });
 	} catch (e) {
 		throw new Stop(`殼的測試沒過，不出版。（${/** @type {Error} */ (e).message}）`);
 	}
@@ -75,7 +75,7 @@ export async function release({ root, sh, upload, log = console.log }) {
 	const archive = archivePath(version, build);
 	log(`6/7 封存：版本 ${version}、建置號 ${build}（main 的 commit 數）→ ${archive}`);
 	sh(
-		xcodebuild,
+		'xcodebuild',
 		[
 			'archive', ...target(root), '-configuration', 'Release', '-destination', 'generic/platform=iOS',
 			'-derivedDataPath', join(root, 'ios/.dd'), '-archivePath', archive, '-allowProvisioningUpdates',
@@ -95,7 +95,7 @@ export async function release({ root, sh, upload, log = console.log }) {
 	}
 	log('7/7 上傳到 App Store Connect（用 Xcode 登入的帳號）');
 	sh(
-		xcodebuild,
+		'xcodebuild',
 		[
 			'-exportArchive', '-archivePath', archive, '-exportOptionsPlist', join(root, 'ios/ExportOptions.plist'),
 			'-exportPath', join(root, 'ios/.dd/export'), '-allowProvisioningUpdates'
@@ -104,8 +104,6 @@ export async function release({ root, sh, upload, log = console.log }) {
 	);
 	log(`上傳了 ${version}（${build}）。等 App Store Connect 處理完，TestFlight 內部測試裝到兩台照「每次出新版殼前」那張清單試；送審的按鈕自己按。`);
 }
-
-const xcodebuild = 'xcodebuild';
 
 /** @param {string} root */
 function target(root) {
