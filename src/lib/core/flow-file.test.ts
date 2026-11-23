@@ -281,6 +281,12 @@ describe('流程檔：版本', () => {
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
 	});
 
+	it('包兩層、Mac 多放了 __MACOSX：不算那個，照樣打開', () => {
+		const flow = sample();
+		const r = readFlowFile(zipSync({ '練習用.cheer': writeFlowFile(flow, {}), '__MACOSX/._練習用.cheer': bytes(0) }));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+	});
+
 	it('包兩層、裡面的流程檔比編輯器新：照樣提示重新整理', () => {
 		const inner = zipOf({ formatVersion: FORMAT_VERSION + 1, flow: sample() });
 		expect(readFlowFile(zipSync({ '練習用.cheer': inner }))).toMatchObject({ kind: 'error', why: { code: 'flow_file_newer' } });
