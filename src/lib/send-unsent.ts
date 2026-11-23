@@ -94,7 +94,7 @@ function sendFlow(room: FlowRoom, u: UnsentRecords): Promise<Answered> {
 
 /**
  * 伺服器沒照做的那幾次（都照做了是 null）：回答的是這幾次現在在伺服器上的樣子（saved，還在的 id），不能動的不算、不退回（records.rs 的 amend）。
- * 刪的還在、救回的不在算沒照做；改的還在就算（記號照規則可能被改過，比不出來有沒有照做）。
+ * 刪的還在、救回的不在算沒照做；改的都算照做了（記號照規則可能被改過，比不出來；那一次被別人刪了也拿掉，跟開著流程時 CloudSteps 一樣）。
  */
 function rest(amend: Amend, saved: Set<string>): Amend | null {
 	const { request } = amend;
