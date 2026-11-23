@@ -335,6 +335,85 @@ App 的殼照這份清單從網站抓新版網頁換上（ADR 0025）。網址�
 
 本機試線上檢查：`npm run build`，用一個送 `build/`、找不到就回 `200.html` 的小伺服器（或 `cargo run`）開起來，`SITE_URL=http://127.0.0.1:8080 npm run check:live`（沒設 `R2_MUSIC_BUCKET_URL` 那條會紅，正常）。
 
+## App（iPhone、iPad）
+
+殼怎麼建、怎麼測、檔案放哪：`ios/README.md`。這一節寫出版：從 `main` 到 App Store Connect（#396，規格 #360「建置、簽章、出新版」，#340）。
+
+**只在這台 Mac 上做**，用 Xcode 登入的 Apple 帳號（網站主人的個人帳號，Team ID `N5HMWTF697`，#362）。Apple 用雲端簽章憑證幫忙簽：repo、GitHub 都不放 Apple 的秘密（沒有 API 金鑰、憑證、描述檔、密碼）。Team ID 是公開的，直接進 repo（`ios/ExportOptions.plist`；專案檔的 `DEVELOPMENT_TEAM` 在 #395 加）。不用 Xcode Cloud、不用 GitHub Actions 出版。
+
+### 出版指令
+
+```sh
+npm run ios:release                  # 全部，最後上傳
+npm run ios:release -- --no-upload   # 封存完就停
+```
+
+`scripts/ios-release.mjs`。哪一步沒過就停下來講原因，後面的都不做：
+
+1. **git**：沒有沒 commit 的改動、在 `main`、`git fetch` 後跟 GitHub 上的 `main` 是同一個 commit。
+2. **凍的情境**：`bridge-scenarios/<版本>/` 要有，而且跟 `current/` 每個檔都一樣（版本讀專案檔的 `MARKETING_VERSION`）。
+3. **上架版只抓、只連自己的網站**：開發用的改網址設定（環境變數 `CHEER_SITE_URL`、`CHEER_WEB_BUNDLE_URL`，凡是 `"CHEER_…"`）在 `ios/App`、`ios/ShellCore/Sources` 裡都要包在 `#if DEBUG` 那一半；Release 的 `SWIFT_ACTIVE_COMPILATION_CONDITIONS` 不能有 `DEBUG`。以後加新的開發用設定，也取 `CHEER_` 開頭的名字，這一步才查得到。（看的是程式和建置設定，不是建出來的檔：14 個字以內的 Swift 字串會直接編進指令裡，在檔案裡搜不到。）
+4. **建網頁、放進殼**：`npm run ios:web`（跟網站部署的同一包；不放 service worker、Workbox、`manifest.webmanifest`、PWA 圖示）。
+5. **殼的測試**：`swift test`（規則），再在最新 iOS 的第一台 iPhone 模擬器上跑管子測試（`xcodebuild test`）。沒過不出版。
+6. **封存**：`xcodebuild archive`（Release、`generic/platform=iOS`、`-allowProvisioningUpdates`），建置號帶 `CURRENT_PROJECT_VERSION=<main 的 commit 數>`。封存放在 Xcode 預設的資料夾（`~/Library/Developer/Xcode/Archives/<日期>/`），Organizer 看得到。封完再看一次封存裡的 `Info.plist`：建置號對、`ITSAppUsesNonExemptEncryption` 是 `NO`，不對就不上傳。
+7. **上傳**：`xcodebuild -exportArchive`，`ios/ExportOptions.plist`（`method` `app-store-connect`、`destination` `upload`、自動簽章、不讓 Xcode 改建置號）。用 Xcode 登入的帳號，不用 API 金鑰。
+
+跟規格的順序不一樣：git、凍的情境、網址這三個便宜的檢查先做，殼的測試排在建網頁後面（管子測試要用真的那包網頁）。
+
+- 指令自己不 commit、不推。平常網站主人跑；網站主人明講「出版」時，agent 可以在這台 Mac 代跑。**送審的按鈕不在指令裡**，網站主人在 App Store Connect 按。
+- ⚠️ **第 6 步（簽章的封存）和第 7 步（上傳）還沒真的跑過**（#396 只跑到不簽章的 Release 建置）。第一次真的出版時驗（#401）。上傳不行就用 `--no-upload`，再到 Xcode → Window → Organizer → 那一份 → Distribute App → App Store Connect 手動上傳，回來改這一節。
+- 封存要專案有 Team（`DEVELOPMENT_TEAM`，#395）。
+
+### 版號
+
+- **版本**（`MARKETING_VERSION`，專案檔）：從 `1.0` 起，殼每出一版加 0.1（1.9 之後是 1.10）。上一版上架以後、下一次出版前，推一個「App 1.x」的 commit 改它，**同一個 commit 把情境凍一份**（下面）。還在 TestFlight、還沒上架時，修了再傳不用改版本。
+- **建置號**（`CFBundleVersion`）：出版那個 commit 在 `main` 的 commit 數（`git rev-list --count HEAD`），出版指令自己帶，專案檔裡的 `CURRENT_PROJECT_VERSION = 1` 只給開發版。自動產生、只會往上；同一個 commit 不能上傳兩次（要再傳就先推一個 commit）。Apple 對建置號規則的原文沒抓到，「每次上傳要新的、只往上」是推論（#340，2026-11-22 查）。
+- 網頁的清單裡「要第幾版以上的殼」（`minShellBuild`，上面「網頁的清單」）比的是**建置號**，不是版本。
+
+### 什麼時候出新版、TestFlight
+
+- 殼改了才出；Apple 規定要用新的 SDK 時，殼沒改也要重建一版。裡面那包網頁用出版那天的 `main`（App 打開會自己去網站抓最新的）。
+- 每一版：上傳 → 在 App Store Connect 等建置處理完 → **TestFlight 內部測試**裝到網站主人的 iPhone、iPad → 照下面「每次出新版殼前」那張清單兩台都做，**有一項沒過就不送審** → 網站主人按送審。**過審就自動上架，不分階段。**
+- 第一次上架另外要 TestFlight **外部**測試：email 邀 3–5 位教練（不開公開連結；13 歲以上、iOS／iPadOS 18.4 以上），試至少 2 週；外部的第一版要先過審。細節在 #401。
+- 送審備註寫「App 會從自己的網站更新網頁畫面，功能不變」。准不准是推論，沒驗（規格 #360）。
+
+### 殼壞了
+
+**商店上的版本不能倒回，只能出新版**（可以在 App Store Connect 申請加急審查）。推論，沒驗（#340）。網頁壞了照上面「倒回」做，殼會跟著換回網站上那一包（ADR 0025）。
+
+### 凍的情境（保護商店裡的殼）
+
+殼會自己從網站抓新網頁，每次部署，新網頁都會跑到商店裡的舊殼上；部署前唯一的關是 GitHub 上的 Vitest（ADR 0025）。所以：
+
+- 每出一版殼，在「App 1.x」commit 把 `bridge-scenarios/current/` 整份複製成 `bridge-scenarios/1.x/`（`cp -R bridge-scenarios/current bridge-scenarios/1.x`）。出版指令第 2 步查它跟 `current/` 一樣。
+- **網頁每次部署前，Vitest 都過每一份凍的情境**：`vite.config.ts` 的 `core@1.x`、`components@1.x` 把用到假殼（`#lib/scenario-shell.js`）的測試照那一份再跑一次；那一版沒有的情境（凍了以後才加的）用 `current/` 的。`src/lib/frozen-scenarios.test.ts` 另外查：凍的每個情境，`current/` 都還有同一個檔名、同一個名字（改了名，凍的那句就沒測試演了）。CI 前端那一關跑 `npm test` 就跑到，沒過不部署。殼那邊（`swift test`）本來就讀 `bridge-scenarios/` 底下每個資料夾。
+- **那一版上架以後，凍的那份只能整份刪、不能改。** 沒有測試擋「有人去改凍的那份」，要靠看 diff。真的要改舊殼認得的話：網頁的清單標 `minShellBuild`，比它舊的那幾份整份刪掉。
+- 還沒上架（還在 TestFlight）時情境改了，凍的那份跟著重凍（同一行 `cp -R`，先刪掉舊的）。**1.0 那份是 #396 凍的；別的票之後還會往情境檔加東西，真的出版前要再凍一次**（#401 第一步）。
+
+### 加密出口
+
+- `ios/App/Info.plist` 的 **`ITSAppUsesNonExemptEncryption` 設 `NO`**：殼和網頁只用系統的 HTTPS（`URLSession`、WebKit），沒有自己帶加密的程式庫。Apple 舉的「不用交文件」的例子就是這種。這樣上傳時不用每次答問卷。
+- App Store Connect 若問到法國：答「不在法國上架」（只上台灣）。
+- **美國的年度自我分類報告（BIS）不交。** 為什麼：2021-03-29 起（86 FR 16482），歸在 EAR 740.17(b)(1) 的「大眾市場」成品不用交，只要留紀錄；還要交的是大眾市場的元件、'executable software'，和仍是 5A002／5B002／5D002 的東西（eCFR §740.17(e)(3)）。查的日期：**2026-11-22**（#335 的研究，筆記在本機分支 `research/app-release` 的 `docs/research/app-release.md`；#340）。⚠️ **這是推論**：免費 App 算不算「大眾市場」、只呼叫系統加密算不算加密品項，都查不到；Apple 的原話是判斷錯了責任在開發者，也就是網站主人。想保險的話，改成每年 2 月 1 日前寄一份 CSV 給 BIS 和 NSA。
+- 之後殼或網頁自己帶了加密的程式庫（例：用 `crypto.subtle` 加解密、加了加密套件），這一段要重看。
+
+### 每次出新版殼前（草稿）
+
+⚠️ **這張是 agent 照規格起草的，網站主人只定了規則，還沒一條一條看過**：要加、要刪、每條怎樣算過，請網站主人過一次（#401 前）。定了的規則：網站主人用 TestFlight 內部版，**iPhone、iPad 兩台都做，有一項沒過就不送審**。
+
+1. 點圖示 1 秒內回到上次那支流程（每版要不要錄影量，網站主人過清單時定，不自己放寬）。
+2. 改一下，馬上把 App 滑掉，再打開，改的還在。
+3. 「檔案」點 `.cheer` 打得開；存檔蓋回原檔。
+4. LINE 傳來的流程檔打得開。
+5. 內建喇叭放 0、藍牙喇叭用調過的延遲校正，畫面和聲音對得上（每版怎麼量，網站主人過清單時定）。
+6. 藍牙喇叭斷線，播放會停。
+7. 鎖螢幕繼續播；鎖定畫面的播放鍵出現。
+8. 飛航模式打得開，看得到上次那支。
+9. 八拍表印得出來，顏色對。
+10. 雲端流程：登入、連上、改一下、記一次。
+11. 殼更新網頁：agent 用開發版接 Mac 上的小網站（`scripts/web-bundle-test-site.mjs`），四種各跑一次（`ios/README.md`）。
+12. 送審前用審查帳號登一次。
+
 ## 第三方套件授權
 
 `npm run build` 會產生 `third-party-licenses.txt`（放在網站根目錄），列出打包進網站的別人的套件：名字、版本、授權、原始碼網址、授權全文。

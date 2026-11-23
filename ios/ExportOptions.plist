@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 出版指令（scripts/ios-release.mjs）上傳那一步用：xcodebuild -exportArchive 直接傳到 App Store Connect（docs/deploy.md「App」）。
+     鍵照 Xcode 27.2 的 xcodebuild -help。Team ID 公開（#362）；這裡沒有金鑰、帳號。建置號出版指令自己給，不讓 Xcode 改。 -->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>teamID</key>
+	<string>N5HMWTF697</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>

@@ -16,6 +16,8 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 | Swift | 6.4.2（跟 Xcode 27.2 一起裝的） | 本機 `swift --version`；swift.org 的 Previous Releases 表最上面是 6.4.2（2026-10-29）。Apple 的 Xcode 27.2 版本說明頁這次抓不到內容，沒從那裡確認 |
 | 模擬器 | iOS 27.2 | 這台 Mac 只裝了 17.2、18.1、27.2，**沒有 18.4**：最低版本 18.4 上沒跑過 |
 
+2026-11-24（#396）再查 https://developer.apple.com/news/releases/ ：最新的正式版還是 Xcode 27.2（27B52，2026-10-29），比它新的只有 27.3 beta 2。Swift 那頁沒列，沒再查。
+
 ## 檔案放哪
 
 ```
@@ -50,7 +52,7 @@ src/lib/app-shell.ts      網頁這邊：讀 window.__cheerShell，useShellIfInA
 - **bundle ID**：`com.littlebluewhite.cheereditor`（專案檔的 `PRODUCT_BUNDLE_IDENTIFIER`）。#362 定的，已經在 Apple 登記、綁在 App Store Connect 的 App 紀錄上，不能再改。
 - **簽章**：自動簽章，沒有 Team（`DEVELOPMENT_TEAM` 不設）。現在只建模擬器版。簽章金鑰、Apple 帳號、裝置識別資料不進 repo。
 - **自訂網址 `app://local/` 不要改**：這個來源是網頁存資料（IndexedDB、localStorage）的地方，換了就找不回來。
-- 版本：`MARKETING_VERSION`（0.1.0）、`CURRENT_PROJECT_VERSION`（建置號 1）。建置號就是網頁的清單 `minShellBuild` 比的那個（docs/deploy.md「網頁的清單」），殼一開始塞給網頁的 `shellBuild` 也是它。
+- 版本：`MARKETING_VERSION`（1.0）、`CURRENT_PROJECT_VERSION`（建置號；專案檔寫 1 給開發版，出版指令封存時改帶 `main` 的 commit 數，docs/deploy.md「App」）。建置號就是網頁的清單 `minShellBuild` 比的那個（docs/deploy.md「網頁的清單」），殼一開始塞給網頁的 `shellBuild` 也是它。
 
 ## 怎麼建、怎麼跑
 
@@ -133,7 +135,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 - **殼這邊**（`ScenarioTests.swift`）：每個情境自動跑。`boot` 裡寫的每一樣要跟真的殼一樣（`shellVersion`、`shellBuild` 拿情境的當輸入）；`features` 是「殼至少會這些」。`from: web` 的每一句餵給真的 `Bridge`，回的要一樣。
 - **網頁這邊**：測試用 `scenarioShell('<檔名>', '<情境名>')`（`src/lib/scenario-shell.ts`）拿到照情境演的假殼，接到網頁上（`fakeHost({ shell: appShell(fake.bridge) })` 或 `window.__cheerShell = fake.bridge`），讓網頁做事，最後 `fake.done()`：網頁該說的都說了、順序和內容都對。
 - **殼主動說的話**（`{ "from": "shell", "name": "routeChanged", "body": … }`）：殼這邊照 `ScenarioParts.swift` 的 `triggers[name]` 觸發，殼要剛好說出這一句（沒登記觸發的方法會失敗）；網頁這邊測試叫 `fake.say()`，把這句送給網頁用 `on(name)` 聽的人。現在的情境檔裡還沒有這種，兩邊的跑法各有一個只在測試裡的例子（`ScenarioTests.swift`、`src/lib/scenario-shell.test.ts`）。
-- **凍的情境**（ADR 0025）：每出一版殼，把 `current/` 複製成 `1.x/`（還沒有）。殼這邊已經讀 `bridge-scenarios/` 底下每個資料夾；網頁這邊到時候把 `scenario-shell.ts` 的 glob 改成也讀凍的那幾份。
+- **凍的情境**（ADR 0025、#396）：每出一版殼，把 `current/` 複製成 `1.x/`（現在有 `1.0/`）。殼這邊讀 `bridge-scenarios/` 底下每個資料夾；網頁這邊 `vite.config.ts` 的 `core@1.x`、`components@1.x` 把用到假殼的測試照那一份再跑一次（`scenario-shell.ts` 的 `scenarioFolder`）。規則（上架後只能整份刪、不能改）在 docs/deploy.md「App」。
 
 ## POST 進不進得了殼（開工先驗，2026-11-22，只在 iOS 27.2 模擬器上）
 

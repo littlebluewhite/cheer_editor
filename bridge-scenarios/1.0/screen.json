@@ -1,0 +1,18 @@
+{
+	"about": "現在是哪一種畫面（#376）：打開一支流程進編輯畫面時說 editor，離開時說 page。殼照這個決定整頁回不回彈。殼會的話 features 有 screen。",
+	"scenarios": [
+		{
+			"name": "打開流程說是編輯畫面_回首頁說是會捲的頁",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["screen"] },
+			"steps": [
+				{ "from": "web", "name": "screen", "body": { "kind": "editor" }, "reply": null },
+				{ "from": "web", "name": "screen", "body": { "kind": "page" }, "reply": null }
+			]
+		},
+		{
+			"name": "不認得的畫面回錯誤",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["screen"] },
+			"steps": [{ "from": "web", "name": "screen", "body": { "kind": "menu" }, "error": "failed" }]
+		}
+	]
+}

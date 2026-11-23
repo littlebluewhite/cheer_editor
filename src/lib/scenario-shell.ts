@@ -5,7 +5,7 @@
 //   …讓網頁做事…
 //   fake.say();                          // 情境下一句是殼主動說的：送給網頁
 //   fake.done();                         // 情境裡的話都說了
-import { expect } from 'vitest';
+import { expect, inject } from 'vitest';
 import type { ShellBoot, ShellBridge } from '#lib/app-shell.js';
 
 export interface ScenarioStep {
@@ -21,14 +21,30 @@ export interface Scenario {
 	steps: ScenarioStep[];
 }
 
-const files = import.meta.glob<{ scenarios: Scenario[] }>('/bridge-scenarios/current/*.json', {
+declare module 'vitest' {
+	interface ProvidedContext {
+		/** 這一輪照哪一份情境演：current，或凍的那份（1.0…）。vite.config.ts 的「凍的情境」那幾個 project 給。 */
+		scenarioFolder: string;
+	}
+}
+
+const files = import.meta.glob<{ scenarios: Scenario[] }>('/bridge-scenarios/*/*.json', {
 	eager: true,
 	import: 'default'
 });
 
-/** 情境檔（bridge-scenarios/current/ 底下的檔名）裡叫 name 的那個情境。 */
+/** 這一輪的情境資料夾：平常是 current；跑凍的情境（#396）時是那一版（例：1.0）。 */
+export const scenarioFolder = inject('scenarioFolder') ?? 'current';
+
+const find = (folder: string, file: string, name: string) =>
+	files[`/bridge-scenarios/${folder}/${file}`]?.scenarios.find((s) => s.name === name);
+
+/**
+ * 情境檔（bridge-scenarios/<這一輪的資料夾>/ 底下的檔名）裡叫 name 的那個情境。
+ * 跑凍的情境時，那一版沒有的情境（凍了以後才加的，舊殼本來就不會說）用 current 的。
+ */
 export function scenario(file: string, name: string): Scenario {
-	const found = files[`/bridge-scenarios/current/${file}`]?.scenarios.find((s) => s.name === name);
+	const found = find(scenarioFolder, file, name) ?? find('current', file, name);
 	if (!found) throw new Error(`情境檔沒有這個情境：${file}「${name}」`);
 	return found;
 }
