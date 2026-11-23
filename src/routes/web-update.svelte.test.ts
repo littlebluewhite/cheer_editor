@@ -46,6 +46,20 @@ describe('App：殼自己更新網頁', () => {
 		fake.done();
 	});
 
+	it('新網頁在別頁（使用說明、帳號）時下載好了：回到首頁照樣請殼換上', async () => {
+		const fake = scenarioShell('web-update.json', '新網頁下載好了，回到首頁時請殼換上');
+		fakeHost({ shell: appShell(fake.bridge) });
+		const props = editorPage(null, { draftStore: fakeDraftStore().store }).props;
+		const home = render(Page, props);
+		await flush();
+		home.unmount();
+		fake.say();
+		render(Page, props);
+		await flush();
+		await settle();
+		fake.done();
+	});
+
 	it('殼不會（舊殼）：殼說了也不換', async () => {
 		const { steps } = scenario('web-update.json', '新網頁下載好了，回到首頁時請殼換上');
 		const fake = playScenario({
