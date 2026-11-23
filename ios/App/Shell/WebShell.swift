@@ -20,11 +20,13 @@ final class WebShell: NSObject {
         siteRoot: URL,
         bridge: Bridge,
         routes: [any SchemeRoute],
-        openOutside: @escaping (URL) -> Void = { UIApplication.shared.open($0) }
+        openOutside: @escaping (URL) -> Void = { UIApplication.shared.open($0) },
+        dataStore: WKWebsiteDataStore = .default()
     ) {
         self.bridge = bridge
         self.openOutside = openOutside
         let config = WKWebViewConfiguration()
+        config.websiteDataStore = dataStore
         config.setURLSchemeHandler(SchemeHandler(siteRoot: siteRoot, routes: routes), forURLScheme: BundledSite.scheme)
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []

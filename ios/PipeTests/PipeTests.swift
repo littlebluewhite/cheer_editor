@@ -51,13 +51,15 @@ final class Harness {
         siteRoot: URL,
         parts: (ShellContext) -> [any BridgePart] = { _ in [] },
         routes: (ShellContext) -> [any SchemeRoute] = { _ in [ProbeRoute()] },
-        size: CGSize = CGSize(width: 400, height: 800)
+        size: CGSize = CGSize(width: 400, height: 800),
+        dataStore: WKWebsiteDataStore = .default()
     ) {
         var ready: (() -> Void)?
         let bridge = Bridge(shellVersion: "9.9.9", shellBuild: 99,
                             parts: [ReadyPart(onReady: { ready?() }), EchoPart()] + parts(context))
         var opened: ((URL) -> Void)?
-        shell = WebShell(siteRoot: siteRoot, bridge: bridge, routes: routes(context), openOutside: { opened?($0) })
+        shell = WebShell(siteRoot: siteRoot, bridge: bridge, routes: routes(context), openOutside: { opened?($0) },
+                         dataStore: dataStore)
         context.attach(shell)
         // 放進視窗：不在畫面上的 WKWebView，計時器、畫面更新會被放慢
         window = UIWindow(frame: CGRect(origin: .zero, size: size))
