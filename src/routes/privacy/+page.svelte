@@ -9,7 +9,7 @@
 	import { SUPPORT_EMAIL as SUPPORT } from '#lib/support-email.js';
 
 	/** 網站主人的法定姓名（跟 App Store 上的賣家一樣）：由網站主人自己填，不寫進 issue、commit 訊息、PR 說明。 */
-	const OWNER_NAME = '〔待填：網站主人的法定姓名〕';
+	const OWNER_NAME = '林峻緯';
 	/** 最後更新日期：改了內容就改這裡；大改（多收一種資料、多一個第三方）還要寄信給所有使用者。 */
 	const UPDATED = '2026-11-24';
 </script>
