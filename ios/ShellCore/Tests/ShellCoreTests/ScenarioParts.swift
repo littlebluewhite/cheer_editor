@@ -4,6 +4,7 @@
 //   - parts 登記那一塊（用 outbox 和假的東西建）
 //   - 情境裡有殼主動說的話（from: shell），在 triggers 登記「怎麼讓殼說這句」，key 是那句話的名字
 //   - 情境開始前殼這邊要先準備好的（網頁看不到的，例：網站上放了哪一包），在 setups 登記，key 是情境的名字
+import Foundation
 import ShellCore
 
 @MainActor
@@ -31,6 +32,10 @@ final class ScenarioShell {
 
     // #383
     let offline = OfflineFolder.forScenario()
+
+    // #384：交給 App 的檔、選檔畫面選到的（nil 是按取消）
+    var picked: URL?
+    private(set) lazy var openFile = OpenFilePart(outbox: outbox, pick: { self.picked })
 
     // #389
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
@@ -74,6 +79,9 @@ final class ScenarioShell {
             // #383
             OfflinePart(folder: offline),
 
+            // #384
+            openFile,
+
             // #389
             nowPlaying,
 
@@ -98,6 +106,9 @@ final class ScenarioShell {
             ("socketClosed", { self.cloudRoom.enterBackground() }),
             ("foreground", { self.cloudRoom.enterForeground() }),
 
+            // #384：「檔案」點了 .cheer
+            ("fileOpened", { self.openFile.handOver(handedFile("全國賽.cheer")) }),
+
             // #389
             ("remote", { self.nowPlaying.press(.togglePlayPause) }),
 
@@ -108,6 +119,10 @@ final class ScenarioShell {
         ]
         triggers = Dictionary(uniqueKeysWithValues: triggerList)
         let setupList: [(String, @MainActor () async -> Void)] = [
+            // #384：點流程檔打開 App（網頁還沒起來就交了）；選檔畫面選了 .zip
+            ("點流程檔打開 App：網頁一開始先拿那個檔；拿過就沒了，重新載入不會又打開", { self.openFile.handOver(handedFile("全國賽.cheer")) }),
+            ("App 裡按「開啟流程檔」：殼叫出選檔畫面，選了回那個檔", { self.picked = handedFile("全國賽.zip") }),
+
             // #393
 
             // #394：網站上放好新的一包（不用比這個殼新的殼）；放了要比這個殼新的殼的一包。都沒放：網站抓不到清單

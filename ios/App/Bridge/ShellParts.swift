@@ -30,6 +30,9 @@ enum ShellParts {
             // #383
             OfflinePart(folder: .inApplicationSupport()),
 
+            // #384
+            OpenFilePart.inApp(context),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 

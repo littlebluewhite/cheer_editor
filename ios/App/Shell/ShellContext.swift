@@ -15,6 +15,9 @@ final class ShellContext {
     /// 網頁說「好了」（ReadyPart）時要叫的：要聽的那一塊在 ShellParts.swift 自己那一格加。
     var onReady: [@MainActor () -> Void] = []
 
+    /// 「檔案」、分享選單交給 App 的檔交給它（#384，SceneDelegate 用）。ShellParts 建好那一塊才有。
+    var openFile: OpenFilePart?
+
     func webSaidReady() {
         onReady.forEach { $0() }
     }

@@ -39,6 +39,7 @@ import type { TabChannel } from '#lib/tab-channel.js';
 import { host } from '#lib/host.js';
 import { loadLastFlow, saveLastFlow } from '#lib/local-settings.js';
 import { SETTINGS_FEATURE } from '#lib/shell-settings.js';
+import { OPEN_FILE_FEATURE, takeOpenedFile } from '#lib/shell-open-file.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -155,8 +156,11 @@ export class FlowFile {
 			this.pageHidden();
 			this.#rememberLast();
 		});
+		// 從「檔案」、分享選單交給開著的 App 的流程檔（#384）：殼說一聲，拿來照開檔的規則打開（有沒存的修改先問）
+		const stopFiles = host().shell.on('fileOpened', () => void this.#openHandedFile());
 		return () => {
 			stopHearing();
+			stopFiles();
 			this.pageClosed();
 			channel?.close();
 			this.#channel = null;
@@ -951,6 +955,19 @@ export class FlowFile {
 		await this.openCloud(id);
 	}
 
+	/**
+	 * 打開殼收著的流程檔（從「檔案」、分享選單交給 App 的，#384）：照開檔的規則（拆兩層、錯誤訊息、有沒存的修改先問）。
+	 * 殼不會、沒有檔回 false。拿到了就不再藏著首頁：開檔可能要先問（有沒存的修改、那個檔有改過的草稿），問的框要看得到。
+	 */
+	async #openHandedFile(): Promise<boolean> {
+		if (!host().shell.can(OPEN_FILE_FEATURE)) return false;
+		const file = await takeOpenedFile(host().shell);
+		if (!file) return false;
+		this.#reopening = false;
+		await this.open(file);
+		return true;
+	}
+
 	/** App 打開時正在回上次那支（還沒開好、還沒確定不見了）。 */
 	get reopening(): boolean {
 		return this.#reopening;
@@ -997,6 +1014,10 @@ export class FlowFile {
 	async #checkDraft(reopen: string | null) {
 		const last = this.#reopening ? loadLastFlow() : '';
 		if (reopen) await this.openCloud(reopen);
+		// 點流程檔打開 App（#384）：開那個檔，不開上次那支。殼不會就不多等一下（網頁版照舊）
+		else if (host().shell.can(OPEN_FILE_FEATURE) && (await this.#openHandedFile())) {
+			// 開了交來的檔
+		}
 		else if (last.startsWith(CLOUD_LAST)) await this.#reopenCloud(last.slice(CLOUD_LAST.length));
 		else if (last) await this.#openDraft(last);
 		if (!this.#editor.session.flow) await this.#readRecent();

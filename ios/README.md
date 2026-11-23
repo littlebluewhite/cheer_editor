@@ -25,12 +25,13 @@ ios/
   CheerEditor.xcodeproj   手寫的專案；App/、PipeTests/ 是「同步資料夾」：放進去的檔自動算進去，不用改專案檔
   App/                    App（target CheerEditor）：只接 UIKit、WebKit
     AppDelegate.swift、SceneDelegate.swift   scene 生命週期；只有一個視窗
-    Info.plist            UIApplicationSupportsMultipleScenes = false（iPad 只開一個視窗）、UILaunchScreen（啟動畫面）
+    Info.plist            UIApplicationSupportsMultipleScenes = false（iPad 只開一個視窗）、UILaunchScreen（啟動畫面）、流程檔的型別（#384）
     Shell/WebShell.swift  WKWebView 和橋怎麼接
     Shell/ShellContext.swift   每一塊、每一條路拿得到的東西（outbox、webView）
     Shell/SchemeHandler.swift   app://local/ 送 App 裡那包網頁
     Shell/SchemeRoutes.swift    ★ app://local/ 上別的路（登記）
     Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
+    Bridge/AppOpenFile.swift    打開流程檔：.cheer 的型別、選檔畫面（#384，下面「打開流程檔」）
     Update/WebUpdates.swift     殼自己更新網頁：App 這邊怎麼接（#393，下面「殼自己更新網頁」）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
@@ -93,7 +94,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`openFile`（打開交給 App 的流程檔、「開啟流程檔」請殼叫出選檔畫面，#384）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -274,6 +275,22 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - 留幾支、登出清什麼照網頁版（登出清離線副本、音樂、這台登入的是誰，沒傳的紀錄不動）。殼代網頁上網用的 cookie 罐子（`cookies-<host>-<port>.json`，#380）不在這個資料夾，照舊會進備份；登出時伺服器叫它清空。
 - **上次那支是雲端流程**：網頁記 `cloud:<流程 id>`。打開時這台有那支的離線副本就先開它（不先問伺服器；先當斷著：只能看、能記，名字旁寫「⚠ 離線」），房間連上（伺服器說可以送步）就自動換成最新的、可以改，中間記的跟斷線時記的一樣當沒傳的紀錄，連上就送（同一個 id 伺服器不記兩筆）；連上時畫面說「連上了。」。換成最新的時，離線副本裡有的音樂不再下載。被收回、被刪掉照房間說的回首頁（黃條說原因，離線副本刪掉）。沒有離線副本就照現在等伺服器（等的時候先畫首頁）。網頁版不記、不開。
 - 只在模擬器、Vitest 上試過（`src/lib/last-flow.svelte.test.ts`、`PipeTests/OfflinePipeTests.swift` 看存在哪、標成不備份）；真的關網路再開 App、iCloud 備份還原沒試（#379）。
+
+## 打開流程檔（#384，ADR 0024）
+
+殼不拆檔、不看內容，只把檔名和位元組（base64）交給網頁；網頁照開檔的規則打開（拆兩層、錯誤訊息、有沒存的修改先問，`src/lib/flow-file.svelte.ts`）。殼：`ShellCore/Sources/ShellCore/Parts/OpenFilePart.swift`（`openFile`）、`App/Bridge/AppOpenFile.swift`、`SceneDelegate.swift`。網頁：`src/lib/shell-open-file.ts`。說的話：`bridge-scenarios/current/openFile.json`。
+
+- **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存回在 #385），分享選單給的是副本。
+- **「檔案」點、分享選單交來的**：`SceneDelegate` 收到網址（App 沒開著是 `willConnectTo` 的 `urlContexts`，開著是 `openURLContexts`）交給 `OpenFilePart.handOver`：殼收著、說 `fileOpened`，網頁拿（`takeOpenedFile`）。拿過就沒了，重新載入不會又打開；網頁還沒拿又交一個，給最後那個。App 剛打開時網頁一開始就先拿，拿到了就開它，不開上次那支（上次那支的草稿還在）。讀檔用 security-scoped 加 `NSFileCoordinator`，不在主執行緒上讀。
+- **「開啟流程檔」**：網頁 `pickFlowFile`，殼叫出系統的選檔畫面（`UIDocumentPickerViewController`，只選得到 `.cheer`、`.zip`，`asCopy: false` 原地打開），按取消回 null。沒用 iOS 18.4 的 `WKUIDelegate` 選檔（`runOpenPanelWith`）：它會連段設定選音樂檔的 `<input type="file">` 一起接走，殼分不出是哪一個欄位、篩不了型別，也進不了情境檔。
+- 存檔還是跟以前一樣（分享選單存成新檔）；蓋回原檔、記住存到哪是 #385。
+
+在 iOS 27.2 模擬器上看到的（2026-11-24，iPhone）：
+
+- 把 `全國賽.cheer` 放進模擬器「我的 iPhone」（`group.com.apple.FileProvider.LocalStorage` 的 File Provider Storage），App 關著時 `xcrun simctl openurl <UDID> file://…/全國賽.cheer`：系統開了 App，進那支流程。App 開著時再 openurl 另一個 `.cheer`：直接換成那支，提示「已開啟『practice.cheer』」。這是系統把檔交給 App 的那一步，不是在「檔案」App 裡用手點。
+- 管子測試 `PipeTests/OpenFilePipeTests.swift`：真的那包網頁，記著上次那支時交一個檔，開交來的那支；App 開著時交一個檔，打開它。
+- **沒試的**（測試按不到系統畫面，要手動）：在「檔案」App 裡用手點 `.cheer`；分享選單「更多」裡有沒有 App、交 `.zip`／`.cheer` 打不打得開；「開啟流程檔」的選檔畫面（選、取消）；iCloud Drive 裡還沒下載的檔；真機（#379）。
+- 分享選單能不能把 App 移到第一排：沒驗。
 
 ## 還沒做的（後面的票）
 
