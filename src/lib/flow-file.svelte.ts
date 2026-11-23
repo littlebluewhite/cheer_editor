@@ -363,24 +363,31 @@ export class FlowFile {
 		}
 		// 紀錄跟編排分開存（ADR 0011）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。
 		const records = found.records.map((r) => ({ actionId: r.actionId, attempt: r.attempt as Attempt }));
-		const saved = (await store.unsent()).find((u) => u.flowId === id);
+		const stored = (await store.unsent()).find((u) => u.flowId === id);
 		const fromServer = putRecords(found.flow as Flow, records);
-		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
 		// 從離線副本換成最新的（#383 每次打開 App 都會）：手上已經有的音樂不再下載（音樂 id 換了檔就換）
 		const shown = this.#editor.session.flow;
 		const fromCopy = refresh && this.#source.kind === 'offline' && this.#source.id === id && shown;
 		const have = fromCopy ? this.#editor.music.bytes(shown) : {};
 		const audio = copy
 			? await store.copyAudio(id)
-			: await this.#cloudAudio(flow, (audioId) => (have[audioId] ? Promise.resolve(have[audioId]) : server.audioBytes(id, audioId)));
+			: await this.#cloudAudio(fromServer, (audioId) => (have[audioId] ? Promise.resolve(have[audioId]) : server.audioBytes(id, audioId)));
 		// 音樂跟離線副本存著的一樣：存離線副本時音樂不動
-		const sameAudio = !!fromCopy && !copy && flow.audio.length === Object.keys(have).length && flow.audio.every((a) => a.id in have);
+		const sameAudio =
+			!!fromCopy && !copy && fromServer.audio.length === Object.keys(have).length && fromServer.audio.every((a) => a.id in have);
 		const music = await this.#editor.readMusic(audio);
 		if (!still()) return;
+		// 換成最新的（同一支）：沒傳的照開著的那支現在的，等音樂時記的、改的不會丟
+		const old = this.#source;
+		const saved = ('steps' in old && old.id === id ? old.steps.keptUnsent : null) ?? stored;
+		const flow = saved ? withUnsent(fromServer, saved) : fromServer;
+		// 被新版擋住後換成最新的（#368）：換上的那支打招呼回答前也照樣擋住
+		const newVersion = this.cloud?.newVersion ?? false;
 		music.upload = (audioId, file) => this.#editor.adapters.server.uploadAudio(id, audioId, file);
 		this.#start(flow, 'cloud', newDraftId(), music, null, !refresh);
 		const room = server.openRoom(id);
 		const cloud = new CloudSteps(room, found.step, this.#editor.session, found.role, { flowId: id, store, saved }, !!first);
+		if (newVersion) cloud.knownNewVersion();
 		this.#source = copy ? { kind: 'offline', id, steps: cloud, savedAt: copy.savedAt } : { kind: 'cloud', id, steps: cloud };
 		this.#rememberLast();
 		cloud.practice.recordedBy = Object.fromEntries(
@@ -409,19 +416,21 @@ export class FlowFile {
 			else deleted();
 		};
 		// 從離線副本打開的：連上了就換成最新的
+		// 換上之前再問一次還開著這支（等的時候回首頁了就不換）
+		const stillOpen = () => this.cloud === cloud;
 		cloud.onback = () => {
-			if (this.#source.kind === 'offline' && this.cloud === cloud) void this.openCloud(id, true);
+			if (this.#source.kind === 'offline' && this.cloud === cloud) void this.openCloud(id, true, stillOpen);
 		};
 		// 斷線連回來才知道有新版、或伺服器回答前改了（#368）：照樣換成最新的（換上的那支打招呼也被擋，但沒斷過線、沒有沒送的步，不會再換）
 		cloud.onstale = async (lost) => {
 			if (this.cloud !== cloud) return;
-			await this.openCloud(id, true);
+			await this.openCloud(id, true, stillOpen);
 			if (lost) this.#editor.session.notice = (lost === 1 ? m.cloud_replaced_lost_one : m.cloud_replaced_lost)({ count: lost });
 		};
 		await this.#keepCopy(
 			copy ?? { ...copyOf(found, flow.name), savedAt: Date.now(), openedAt: 0 },
 			copy || sameAudio ? undefined : audio,
-			() => this.cloud === cloud
+			stillOpen
 		);
 		if (sameAudio) this.#copyAudioIds = Object.keys(audio).sort().join();
 	}

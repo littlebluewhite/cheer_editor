@@ -165,6 +165,71 @@ describe('被新版擋住時能看最新的', () => {
 	});
 });
 
+/** 換成最新的時讀音樂先停著（換上之前那一段），回傳讓它讀完的。 */
+function holdMusic(s: Awaited<ReturnType<typeof open>>) {
+	const read = s.page.editor.readMusic.bind(s.page.editor);
+	const gate = Promise.withResolvers<void>();
+	vi.spyOn(s.page.editor, 'readMusic').mockImplementationOnce(async (audio) => {
+		await gate.promise;
+		return read(audio);
+	});
+	return gate.resolve;
+}
+
+/** 開著時斷線、伺服器換了新版，連回來被擋（換成最新的那支還在讀音樂）。 */
+async function staleWhileLoading(s: Awaited<ReturnType<typeof open>>) {
+	s.disconnect();
+	await settle();
+	s.state.fingerprint = 'newer-core';
+	const release = holdMusic(s);
+	s.reconnect();
+	await settle();
+	return release;
+}
+
+describe('換成最新的時', () => {
+	it('換的時候在讀音樂、這時回首頁了：讀完不再打開那支', async () => {
+		const s = await open();
+		const release = await staleWhileLoading(s);
+		s.page.session.open(null);
+		await settle();
+		release();
+		await settle();
+		expect(s.page.session.flow).toBeNull();
+	});
+
+	it('換的時候在讀音樂、這時記了一次，換上後又記一次：兩次都留在這台', async () => {
+		const offline = fakeOfflineStore();
+		const s = await open(offline);
+		await fireEvent.click(screen.getByRole('button', { name: '練習' }));
+		const release = await staleWhileLoading(s);
+		await recordOne();
+		release();
+		await settle();
+		await recordOne();
+		expect(offline.of('c1')!.records).toHaveLength(2);
+	});
+
+
+	it('連回來被擋、換上的那支打招呼還沒回：照樣不能改、不能下載流程檔', async () => {
+		const s = await open();
+		const before = s.page.editor.file.cloud;
+		s.disconnect();
+		await settle();
+		s.state.fingerprint = 'newer-core';
+		s.state.holdRoom = true;
+		s.reconnect();
+		await settle();
+		// 舊的那支打招呼被擋（換成最新的）；換上的那支打招呼留著不回
+		s.releaseRoom(true);
+		await settle();
+		expect(s.page.editor.file.cloud).not.toBe(before);
+		expect(s.page.editor.file.cloud!.newVersion).toBe(true);
+		expect(s.page.session.viewing).toBe(true);
+		expect(await menuItem('下載成流程檔')).toBeNull();
+	});
+});
+
 describe('被新版擋住時能記，更新後自動傳', () => {
 	it('記的存著、寫「沒傳」；重新整理（指紋對上）以後自動傳上去，只有一筆', async () => {
 		const offline = fakeOfflineStore();

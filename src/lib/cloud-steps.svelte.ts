@@ -222,6 +222,12 @@ export class CloudSteps {
 		session.onrecord = (before, after) => this.#recorded(before, after);
 	}
 
+	/** 已經知道有新版（被擋後換成最新的那支，#368）：打招呼的回答還沒到就先擋住，不能改、不能下載。 */
+	knownNewVersion() {
+		this.newVersion = true;
+		this.#lock();
+	}
+
 	/** 上次看到第幾步（離線副本記著，連上時從這裡補，#261）。 */
 	get seen(): number {
 		return this.#seen;
@@ -404,15 +410,21 @@ export class CloudSteps {
 			this.syncing = false;
 			this.synced.show(true, SYNCED_MS);
 		}
+		const kept = this.keptUnsent;
+		if (kept && save) void this.#keep!.store.saveUnsent(kept);
+	}
+
+	/** 這台還沒傳的（存進這台的那一份）：換成最新的那支接著用（換的時候記的不會丟）。沒有存在這台是 null。 */
+	get keptUnsent(): UnsentRecords | null {
 		const keep = this.#keep;
-		if (!keep || !save) return;
-		void keep.store.saveUnsent({
+		if (!keep) return null;
+		return {
 			flowId: keep.flowId,
 			flowName: this.#session.flow?.name ?? keep.saved?.flowName ?? '',
 			records: [...this.#unsent.values()],
-			amends,
+			amends: this.#pendingAmends(),
 			dropped: this.practice.droppedRecords
-		});
+		};
 	}
 
 	/** 不能改的原因放進 session（有新版優先，再來是斷線）、不能記的原因放進練習的權限（檢視者）。記錄者只能改、刪自己記的。 */
