@@ -59,6 +59,7 @@ function filesShell(init: { handed?: string; settings?: boolean } = {}) {
 	const files = new Map<string, Uint8Array>();
 	const said: { name: string; body: Record<string, unknown> }[] = [];
 	let held = init.handed ?? null;
+	const handedBytes = writeFlowFile(contest(), {});
 	/** 問存到哪時存成這個名字；null 是按取消。 */
 	let saveAs: string | null = null;
 	const features = [SAVE_FILE_FEATURE, 'openFile', ...(init.settings === false ? [] : ['settings'])];
@@ -69,7 +70,7 @@ function filesShell(init: { handed?: string; settings?: boolean } = {}) {
 			const b = (body ?? {}) as Record<string, unknown>;
 			said.push({ name, body: b });
 			if (name === 'takeOpenedFile') {
-				const r = held && { name: held, bytes: writeFlowFile(contest(), {}).toBase64(), target: `mark:${held}` };
+				const r = held && { name: held, bytes: handedBytes.toBase64(), target: `mark:${held}` };
 				held = null;
 				return r;
 			}
@@ -88,6 +89,7 @@ function filesShell(init: { handed?: string; settings?: boolean } = {}) {
 		shell,
 		files,
 		said,
+		handedBytes,
 		saves: () => said.filter((s) => s.name === 'saveFlowFile').map((s) => ({ target: s.body.target, name: s.body.name })),
 		askAs(name: string | null) {
 			saveAs = name;
@@ -144,6 +146,37 @@ describe('編輯器裡存檔', () => {
 		await again.editor.file.save();
 		expect(fake.saves().at(-1)).toEqual({ target: 'mark:全國賽.cheer', name: '全國賽三.cheer' });
 		expect([...fake.files.keys()]).toEqual(['全國賽.cheer']);
+		disconnect();
+	});
+
+	it('同一個檔的副本（LINE 傳來的，位元組一樣）：不沿用原檔記的存到哪，App 關掉再開存檔也問', async () => {
+		const fake = filesShell({ handed: '全國賽.cheer' });
+		const { settings } = fakeSettings();
+		fakeHost({ shell: fake.shell, settings });
+		const drafts = fakeDraftStore();
+		const adapters = { createSaver: (r?: string) => shellSaver(fake.shell, r ?? null), draftStore: drafts.store };
+		const first = testEditor(null, adapters);
+		let disconnect = first.editor.file.connect();
+		await flush();
+		await flush();
+		disconnect();
+		// 同一個檔的副本（沒有書籤）
+		const copy = fake.handedBytes;
+		const second = testEditor(null, adapters);
+		disconnect = second.editor.file.connect();
+		await flush();
+		await second.editor.file.open(new File([copy.slice()], '全國賽.zip'));
+		second.session.change(flowOf(renameFlow(second.session.flow!, '全國賽二')));
+		second.editor.file.pageHidden();
+		await flush();
+		disconnect();
+		const again = testEditor(null, adapters);
+		disconnect = again.editor.file.connect();
+		await flush();
+		await flush();
+		expect(again.session.flow?.name).toBe('全國賽二');
+		await again.editor.file.save();
+		expect(fake.saves()).toEqual([{ target: null, name: '全國賽二.cheer' }]);
 		disconnect();
 	});
 

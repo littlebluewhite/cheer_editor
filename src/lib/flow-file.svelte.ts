@@ -223,12 +223,12 @@ export class FlowFile {
 
 	/**
 	 * App 裡記下這支流程存到哪（殼給的書籤，#385）：跟草稿一起記（小設定，key 是草稿 id），App 關掉再開從最近的流程、上次那支打開也蓋回同一個檔。
-	 * oldId：存檔後草稿 id 換了，舊的那筆不記了。網頁版的存檔薄層沒有書籤，不記。
+	 * 存檔薄層沒有書籤（新的流程、LINE 傳來的副本：跟原檔位元組一樣，草稿 id 也一樣）就清掉，不沿用別的檔記的。網頁版的存檔薄層沒有書籤。
+	 * oldId：存檔後草稿 id 換了，舊的那筆不記了。
 	 */
 	#rememberTarget(oldId?: string) {
 		if (oldId && oldId !== this.#draftId) saveSaveTarget(oldId, null);
-		const target = this.#saver?.remembered;
-		if (target) saveSaveTarget(this.#draftId, target);
+		saveSaveTarget(this.#draftId, this.#saver?.remembered ?? null);
 	}
 
 	/** 選單有「傳給別人」：App 裡（殼會叫出分享選單送流程檔）開著本機流程（#385）。網頁版沒有（推論：iPad 的網頁存檔本來就是分享選單）。 */
