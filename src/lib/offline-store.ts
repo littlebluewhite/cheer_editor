@@ -56,6 +56,8 @@ export interface OfflineStore {
 	unsent(): Promise<UnsentRecords[]>;
 	/** 存一支流程的，蓋掉舊的；都空了就刪掉那一份。 */
 	saveUnsent(unsent: UnsentRecords): Promise<void>;
+	/** 一支流程的讀了改、存回去，中間別的分頁存不進來；沒存著的不叫 change。存不了吞掉。 */
+	updateUnsent(flowId: string, change: (now: UnsentRecords) => UnsentRecords): Promise<void>;
 	/** 全部丟掉（登出時選「丟掉，登出」）。 */
 	clearUnsent(): Promise<void>;
 	/** 這台存的會被瀏覽器清掉（iPhone、iPad 的 Safari，不是從主畫面打開的），而且提醒還沒按過「知道了」。 */
@@ -196,6 +198,23 @@ export function createIndexedDbOfflineStore(): OfflineStore {
 				await run(UNSENT, 'readwrite', (s) => (isEmptyUnsent(u) ? s.delete(u.flowId) : s.put(storedUnsent(u), u.flowId)));
 			} catch {
 				// 存不了：只留在這個分頁
+			}
+		},
+		async updateUnsent(flowId, change) {
+			try {
+				await run(UNSENT, 'readwrite', (s) => {
+					const req = s.get(flowId);
+					req.onsuccess = () => {
+						const now = readUnsent(req.result);
+						if (!now) return;
+						const u = change(now);
+						if (isEmptyUnsent(u)) s.delete(flowId);
+						else s.put(storedUnsent(u), flowId);
+					};
+					return req;
+				});
+			} catch {
+				// 存不了：這台存著的不變
 			}
 		},
 		async clearUnsent() {

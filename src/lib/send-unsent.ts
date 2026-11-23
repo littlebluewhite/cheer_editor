@@ -12,8 +12,7 @@ import type { CloudRecord, FlowRoom, ServerAdapter } from '#lib/server-api.js';
 export async function sendUnsent(server: Pick<ServerAdapter, 'openRoom'>, store: OfflineStore): Promise<void> {
 	for (const u of await unsentFlows(store)) {
 		const left = await sendFlow(server.openRoom(u.flowId), u);
-		const now = (await store.unsent().catch(() => [])).find((n) => n.flowId === u.flowId);
-		if (now) await store.saveUnsent(withoutSent(now, u, left));
+		await store.updateUnsent(u.flowId, (now) => withoutSent(now, u, left));
 	}
 }
 

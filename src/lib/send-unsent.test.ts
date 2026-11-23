@@ -103,4 +103,26 @@ describe('傳這台沒傳的紀錄', () => {
 		await done;
 		expect(offline.of('c1')!.amends).toEqual([restore, del]);
 	});
+	it('傳完要從這台存著的拿掉傳了的時候，別的分頁剛好又記了一次：後記的那次留在這台', async () => {
+		const fake = fakeServer({
+			users: [lin],
+			signedIn: lin.email,
+			flows: [{ id: 'c1', owner: lin.email, flow: libSample(), updatedAt: '2026-11-07T00:00:00Z' }]
+		});
+		const offline = fakeOfflineStore({ unsent: [{ flowId: 'c1', flowName: '區賽', records: [recorded('tfirst0000001')], amends: [], dropped: [] }] });
+		/** 別的分頁記的（同一台）：存進這台。 */
+		const otherTab = async () => {
+			const [u] = await offline.store.unsent();
+			await offline.store.saveUnsent({ ...u, records: [...u.records, recorded('tsecond000002')] });
+		};
+		// 一次讀改存（別的分頁存的只能在前、在後）：別的分頁在它之前存
+		const update = offline.store.updateUnsent.bind(offline.store);
+		offline.store.updateUnsent = async (flowId, change) => {
+			await otherTab();
+			return update(flowId, change);
+		};
+		await sendUnsent(fake.server, offline.store);
+		expect(fake.state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tfirst0000001']);
+		expect(offline.of('c1')!.records.map((r) => r.record.attempt.id)).toEqual(['tsecond000002']);
+	});
 });

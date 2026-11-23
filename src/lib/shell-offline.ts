@@ -35,6 +35,11 @@ export function shellOfflineStore(shell: Shell): OfflineStore {
 		saveUnsent(u) {
 			return isEmptyUnsent(u) ? write(['unsentDrop', { flowId: u.flowId }]) : write(['unsentSave', { flowId: u.flowId, value: storedUnsent(u) }]);
 		},
+		// App 只有一個網頁在寫（沒有別的分頁）：讀了再存就好
+		async updateUnsent(flowId, change) {
+			const now = (await this.unsent()).find((u) => u.flowId === flowId);
+			if (now) await this.saveUnsent(change(now));
+		},
 		clearUnsent: () => write(['unsentClear']),
 		needsHomeScreen: () => false,
 		homeScreenKnown() {},

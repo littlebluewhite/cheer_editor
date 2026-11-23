@@ -159,6 +159,10 @@ export function fakeOfflineStore(init: { unsent?: UnsentRecords[]; volatile?: bo
 			if (isEmptyUnsent(u)) all.delete(u.flowId);
 			else all.set(u.flowId, storedUnsent(u));
 		},
+		async updateUnsent(flowId, change) {
+			const now = all.has(flowId) ? readUnsent(structuredClone(all.get(flowId))) : null;
+			if (now) await store.saveUnsent(change(now));
+		},
 		async clearUnsent() {
 			all.clear();
 		},
