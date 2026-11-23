@@ -303,8 +303,8 @@ async fn the_admin_cannot_request_and_signed_out_gets_401(db: sqlx::PgPool) {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-/// 一台假的 Resend：第一封寄得出去，之後回 429（今天的額度剛好用完）。
-async fn resend_quota_runs_out_after_one() -> reqwest::Url {
+/// 一台假的 Resend：前 ok 封寄得出去，之後回 429（今天的額度用完了）。
+async fn resend_quota_runs_out_after(ok: usize) -> reqwest::Url {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -314,7 +314,7 @@ async fn resend_quota_runs_out_after_one() -> reqwest::Url {
         axum::routing::post(move || {
             let count = count.clone();
             async move {
-                if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                if count.fetch_add(1, Ordering::SeqCst) < ok {
                     return (StatusCode::OK, axum::Json(json!({ "id": "first" })));
                 }
                 (
@@ -332,17 +332,15 @@ async fn resend_quota_runs_out_after_one() -> reqwest::Url {
     format!("http://{addr}").parse().unwrap()
 }
 
-#[sqlx::test]
-async fn when_the_admin_mail_cannot_go_out_the_request_still_holds(db: sqlx::PgPool) {
-    // 先用記在記憶體的寄信建好人，再換成寄第二封就回 429 的 Resend：
-    // 他已經收到「帳號停用了」，帳號就要真的停用，不能因為管理員那封寄不出去又復原
+/// 先用記在記憶體的寄信建好人，再換成寄 ok 封以後就回 429 的 Resend，要求刪除帳號：照樣停用、登出。
+async fn request_with_quota_after(db: sqlx::PgPool, ok: usize) {
     let s = Server::new(db.clone()).await;
     let wang = s.user(WANG, "王教練").await;
     s.user(ADMIN, "管理員").await;
     let mailer = Mailer::resend_at(
         "re_test",
         "test <t@example.com>".into(),
-        resend_quota_runs_out_after_one().await,
+        resend_quota_runs_out_after(ok).await,
     );
     let q = Server::with_mailer(db, mailer);
 
@@ -353,4 +351,16 @@ async fn when_the_admin_mail_cannot_go_out_the_request_still_holds(db: sqlx::PgP
     let (status, _) = q.send("GET", "/api/me", None, &wang.cookie).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "登出了");
     assert!(q.login(WANG).await.is_none(), "停用了");
+}
+
+#[sqlx::test]
+async fn when_the_admin_mail_cannot_go_out_the_request_still_holds(db: sqlx::PgPool) {
+    // 他已經收到「帳號停用了」，帳號就要真的停用，不能因為管理員那封寄不出去又復原
+    request_with_quota_after(db, 1).await;
+}
+
+#[sqlx::test]
+async fn when_no_mail_can_go_out_the_request_still_holds(db: sqlx::PgPool) {
+    // 一封都寄不出去：要求照樣算數（伺服器紀錄記著，管理員看得到停用、要求的日期）
+    request_with_quota_after(db, 0).await;
 }

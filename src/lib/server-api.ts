@@ -207,7 +207,8 @@ export interface ServerAdapter {
 	deleteSummary(): Promise<DeleteSummary | null>;
 	/**
 	 * 要求刪除帳號（#370）：帳號馬上停用（每台裝置登出），寄我和管理員各一封信。
-	 * 寄信服務今天的額度用完是 'mailQuota'（什麼都沒改）；其他做不成丟 ServerUnreachable。
+	 * 現在的伺服器先存好再寄，信寄不出去也照樣停用；'mailQuota'（什麼都沒改）只有退回舊版的伺服器才會回（額度用完回 503）。
+	 * 其他做不成丟 ServerUnreachable。
 	 */
 	requestDelete(): Promise<'ok' | 'mailQuota'>;
 }
