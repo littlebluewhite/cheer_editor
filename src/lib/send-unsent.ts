@@ -17,17 +17,25 @@ export async function sendUnsent(server: Pick<ServerAdapter, 'openRoom'>, store:
 	}
 }
 
-/** 這台現在存著的（now）拿掉送了的（sent）裡伺服器回答了的（不在 left 裡的）。 */
+/**
+ * 這台現在存著的（now）拿掉送了的（sent）裡伺服器回答了的（不在 left 裡的）。
+ * 記的要跟送出去的一模一樣才拿掉（傳的時候別的分頁改了記號：改過的留著）；改、刪、救回一個回答只拿掉一個（同樣的又做了一次：留著）。
+ */
 function withoutSent(now: UnsentRecords, sent: UnsentRecords, left: UnsentRecords): UnsentRecords {
 	const kept = new Set(left.records.map((r) => r.record.attempt.id));
-	const done = new Set(sent.records.flatMap((r) => (kept.has(r.record.attempt.id) ? [] : [r.record.attempt.id])));
+	const done = new Set(sent.records.flatMap((r) => (kept.has(r.record.attempt.id) ? [] : [JSON.stringify(r.record)])));
 	const key = (a: UnsentRecords['amends'][number]) => JSON.stringify(a);
-	const keptAmends = new Set(left.amends.map(key));
-	const doneAmends = new Set(sent.amends.map(key).filter((k) => !keptAmends.has(k)));
+	const doneAmends = sent.amends.map(key);
+	for (const k of left.amends.map(key)) doneAmends.splice(doneAmends.indexOf(k), 1);
 	return {
 		...now,
-		records: now.records.filter((r) => !done.has(r.record.attempt.id)),
-		amends: now.amends.filter((a) => !doneAmends.has(key(a)))
+		records: now.records.filter((r) => !done.has(JSON.stringify(r.record))),
+		amends: now.amends.filter((a) => {
+			const i = doneAmends.indexOf(key(a));
+			if (i < 0) return true;
+			doneAmends.splice(i, 1);
+			return false;
+		})
 	};
 }
 
