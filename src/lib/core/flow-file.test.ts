@@ -231,7 +231,7 @@ function zipOf(doc: unknown, extra: Record<string, Uint8Array> = {}): Uint8Array
 }
 
 // 給教練看的原因不提 flow.json（T12）。
-const NO_FLOW = { message: 'zip 裡沒有流程，不是這個編輯器存的流程檔', why: { code: 'flow_file_no_json' } };
+const NO_FLOW = { message: '檔案裡沒有流程，不是這個編輯器存的流程檔', why: { code: 'flow_file_no_json' } };
 const BROKEN = { message: '流程檔裡的資料壞掉了', why: { code: 'flow_file_broken' } };
 const NOT_A_ZIP = { message: '檔案壞掉了，或不是這個編輯器存的流程檔', why: { code: 'flow_file_not_a_zip' } };
 const IMAGE = { message: '這是圖片，不是流程檔', why: { code: 'flow_file_image' } };
@@ -271,6 +271,29 @@ describe('流程檔：版本', () => {
 		const r = readFlowFile(wrapped);
 		expect(r.kind === 'ok' && r.flow).toEqual(flow);
 		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
+	});
+
+	// Mac 的 LINE 把不認得的檔（.cheer）再包成 .zip：裡面直接是原本那一個檔，沒有多一層資料夾（#364、ADR 0024）。
+	it('被 Mac LINE 包兩層（zip 裡只有一個 .cheer）：打開裡面那個，音樂也讀到', () => {
+		const flow = sample();
+		const r = readFlowFile(zipSync({ '練習用.cheer': writeFlowFile(flow, { a1: bytes(7) }) }));
+		expect(r.kind === 'ok' && r.flow).toEqual(flow);
+		expect(r.kind === 'ok' && r.audio).toEqual({ a1: bytes(7) });
+	});
+
+	it('包兩層、裡面的流程檔比編輯器新：照樣提示重新整理', () => {
+		const inner = zipOf({ formatVersion: FORMAT_VERSION + 1, flow: sample() });
+		expect(readFlowFile(zipSync({ '練習用.cheer': inner }))).toMatchObject({ kind: 'error', why: { code: 'flow_file_newer' } });
+	});
+
+	it.each([
+		['裡面那個檔不是 zip', zipSync({ 'a.cheer': strToU8('hi') })],
+		['裡面那個 zip 沒有流程', zipSync({ 'a.zip': zipSync({ 'a.txt': strToU8('hi') }) })],
+		['裡面的流程檔又包了一層', zipSync({ 'a.zip': zipSync({ 'b.cheer': writeFlowFile(sample(), {}) }) })],
+		['流程檔旁邊還有別的檔', zipSync({ 'a.cheer': writeFlowFile(sample(), {}), 'b.txt': strToU8('hi') })],
+		['唯一的檔在資料夾裡', zipSync({ 'x/a.cheer': writeFlowFile(sample(), {}) })]
+	])('包兩層但%s：不拆，說檔案裡沒有流程', (_, file) => {
+		expect(readFlowFile(file)).toEqual({ kind: 'error', ...NO_FLOW });
 	});
 
 	// 段的上限：改段的指令擋下的長度，直接寫進流程檔也打不開；改得出來的長度一定打得開。訊息各照各的。

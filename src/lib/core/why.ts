@@ -142,7 +142,7 @@ const ZH = {
 	flow_check_clash: '{member} 同一時間在「{first}」和「{second}」裡',
 	// flow-file.ts：打不開流程檔、流程的資料壞掉
 	flow_file_not_a_zip: '檔案壞掉了，或不是這個編輯器存的流程檔',
-	flow_file_no_json: 'zip 裡沒有流程，不是這個編輯器存的流程檔',
+	flow_file_no_json: '檔案裡沒有流程，不是這個編輯器存的流程檔',
 	flow_file_broken: '流程檔裡的資料壞掉了',
 	flow_file_image: '這是圖片，不是流程檔',
 	flow_file_newer: '是新版編輯器存的，請重新整理，更新編輯器',

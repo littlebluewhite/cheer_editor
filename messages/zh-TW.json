@@ -393,7 +393,7 @@
 	"members_delete_item_squad_role": "動作「{action}」（{segment} {from}）：他是第 {squad} 組的{role}",
 	"phases_delete_item": "刪掉：環節 {phase}",
 	"flow_file_not_a_zip": "檔案壞掉了，或不是這個編輯器存的流程檔",
-	"flow_file_no_json": "zip 裡沒有流程，不是這個編輯器存的流程檔",
+	"flow_file_no_json": "檔案裡沒有流程，不是這個編輯器存的流程檔",
 	"flow_file_broken": "流程檔裡的資料壞掉了",
 	"flow_file_image": "這是圖片，不是流程檔",
 	"flow_file_newer": "是新版編輯器存的，請重新整理，更新編輯器",

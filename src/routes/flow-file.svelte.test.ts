@@ -113,11 +113,19 @@ describe('存檔', () => {
 describe('開檔', () => {
 	it('首頁可以選流程檔打開；打開後沒有未存的修改', async () => {
 		setup();
+		// 不篩副檔名：.cheer 也選得到（ADR 0024）。
+		expect((screen.getByLabelText('開啟流程檔') as HTMLInputElement).accept).toBe('');
 		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }));
 		expect(screen.getByText('練習用')).toBeTruthy();
 		expect(document.querySelector('[data-lane="m1"] [data-action-id]')).toBeTruthy();
 		expect(screen.queryByText(/找不到音樂/)).toBeNull();
 		expect(hasUnsavedChanges()).toBe(false);
+	});
+
+	it('.cheer 和 .zip 內容一樣：選 .cheer 也打得開', async () => {
+		setup();
+		await openFile(writeFlowFile(sampleFlow(), { a1: new Uint8Array([1]) }), '開啟流程檔', '縣賽.cheer');
+		expect(screen.getByRole('status').textContent).toBe('已開啟「縣賽.cheer」');
 	});
 
 	it('開好了：提示寫開的是哪個檔', async () => {
@@ -250,7 +258,7 @@ describe('新建', () => {
 		setup();
 		await openFile(zipSync({ 'a.txt': strToU8('hi') }), '開啟流程檔', '照片.zip');
 		const text = screen.getByRole('alert').textContent!;
-		expect(text).toBe('打不開「照片.zip」：zip 裡沒有流程，不是這個編輯器存的流程檔');
+		expect(text).toBe('打不開「照片.zip」：檔案裡沒有流程，不是這個編輯器存的流程檔');
 		expect(text).not.toContain('flow.json');
 	});
 

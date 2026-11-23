@@ -393,7 +393,7 @@
 	"members_delete_item_squad_role": "Skill “{action}” ({segment}, {from}): their position is {role} in stunt group {squad}",
 	"phases_delete_item": "Delete phase {phase}",
 	"flow_file_not_a_zip": "The file is damaged, or it isn't a routine file saved by this editor",
-	"flow_file_no_json": "There's no routine in this zip; it isn't a routine file saved by this editor",
+	"flow_file_no_json": "There's no routine in this file; it isn't a routine file saved by this editor",
 	"flow_file_broken": "The data in the routine file is damaged",
 	"flow_file_image": "This is an image, not a routine file",
 	"flow_file_newer": "It was saved by a newer version of the editor. Reload the page to update the editor",
