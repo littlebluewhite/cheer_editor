@@ -78,7 +78,7 @@
 
 		<section>
 			<h2>交給哪些服務、在哪裡</h2>
-			<p>這個服務用下面幾家公司的服務來跑。它們都有自己的資料處理條款，只照我們的需要處理資料。</p>
+			<p>這個服務用下面幾家公司的服務來跑。Fly.io、Neon、Cloudflare、Resend 都有自己的資料處理條款。</p>
 			<div class="table-wrap">
 				<table>
 					<caption>交給哪些服務</caption>

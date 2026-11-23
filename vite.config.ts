@@ -50,7 +50,9 @@ export default defineConfig({
 					// 每一頁都是建置時先產生好的，網址後面的 ?… 不會換掉該給哪個 HTML。
 					// 不加這行的話，service worker 只認得沒有 ?… 的網址：「使用說明」連結的 guide?from=editor 對不到存好的 guide，
 					// 掉到「其他網址都給首頁」那一條，新分頁就變成初始畫面（scripts/check-sw.mjs 檢查）。
-					ignoreURLParametersMatching: [/.*/]
+					ignoreURLParametersMatching: [/.*/],
+					// privacy/、support/（App Store Connect 填的網址後面有斜線，#372）不給首頁，交給伺服器轉到沒有斜線的那頁。
+					navigateFallbackDenylist: [/\/(privacy|support)\/$/]
 				},
 				manifest: {
 					name: '競技啦啦隊流程編輯器',
