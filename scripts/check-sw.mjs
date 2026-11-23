@@ -51,6 +51,9 @@ const cases = [
 	['guide?from=editor', '使用說明', 'button.brand'], // 選單、窄螢幕名字欄、初始畫面的「使用說明」：從編輯器來，品牌字是「關掉分頁」的按鈕
 	['guide?from=editor#keys', '使用說明', 'button.brand'], // 動作小窗的「全部的快捷鍵」
 	['guide', '使用說明', 'a.brand'],
+	// 隱私權政策、支援（#372）：離線也打得開。網址後面不加斜線：privacy/ 會被 service worker 給首頁
+	['privacy', '隱私權政策', 'article'],
+	['support', '支援', 'article'],
 	['?x=1', '競技啦啦隊流程編輯器', 'h1']
 ];
 let failed = 0;
