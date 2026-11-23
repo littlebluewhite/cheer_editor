@@ -1,7 +1,10 @@
 // 一步被退回的提示。伺服器送原因的代號（why，ADR 0017）；還沒更新的伺服器（部署、退版時）不送，照它寫的中文。
 import { describe, expect, it } from 'vitest';
-import { droppedTexts, sentBack, type Rejected } from '#lib/cloud-steps.svelte.js';
+import { droppedTexts, sentBack, withUnsent, type Rejected } from '#lib/cloud-steps.svelte.js';
 import { localStorageKey } from '#lib/paraglide/runtime.js';
+import { putRecords, takeRecords, type Flow, type StoredAttempt } from '#lib/core';
+import type { UnsentRecords } from '#lib/offline-store.js';
+import { ratedSample } from '#lib/test-flows.js';
 
 const rejected = (message: string, by?: string): Rejected => ({
 	kind: 'rejected',
@@ -77,5 +80,28 @@ describe('刪除帳號的人改的步（#369）：伺服器送的名字是空的
 		const undo: Rejected = { ...rejected('別人後來改過，這步不能復原'), why: { code: 'undoChangedLater', by: '', redo: true } };
 		expect(sentBack(undo, '改名')).toMatch(/^Someone else /);
 		localStorage.setItem(localStorageKey, 'zh-TW');
+	});
+});
+
+describe('打開時把這台還沒傳的放回伺服器給的流程（withUnsent，#260）', () => {
+	const attempt = (id: string): StoredAttempt => ({ actionId: 'x1', attempt: { id, date: '2026-11-04', who: 'g1', practice: 'drill', whole: true, marks: { p1: '✓' } } });
+	const ids = (flow: Flow) => takeRecords(flow).records.map((r) => r.attempt.id);
+	const unsent = (amends: UnsentRecords['amends']): UnsentRecords => ({ flowId: 'c1', flowName: '區賽', records: [], amends, dropped: [] });
+	const server = () => putRecords(ratedSample(), [attempt('tabc123def456'), attempt('tzzz000yyy111')]);
+
+	it('刪了又救回、都還沒送到：伺服器上的那一次照樣在', () => {
+		const flow = withUnsent(
+			server(),
+			unsent([
+				{ ids: ['tabc123def456'], request: { kind: 'deleteRecords', ids: ['tabc123def456'] } },
+				{ ids: ['tabc123def456'], request: { kind: 'restoreRecords', ids: ['tabc123def456'] } }
+			])
+		);
+		expect(ids(flow).sort()).toEqual(['tabc123def456', 'tzzz000yyy111']);
+	});
+
+	it('只刪了沒救回：拿掉', () => {
+		const flow = withUnsent(server(), unsent([{ ids: ['tabc123def456'], request: { kind: 'deleteRecords', ids: ['tabc123def456'] } }]));
+		expect(ids(flow)).toEqual(['tzzz000yyy111']);
 	});
 });

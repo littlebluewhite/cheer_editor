@@ -892,16 +892,27 @@ function droppedRow(flow: Flow, { actionId, attempt }: StoredAttempt): DroppedRe
 
 /**
  * 打開雲端流程時，把這台還沒傳的（#260）放回伺服器給的流程：新記的加上（伺服器已經有的不重複），
- * 改了的換成改好的，刪了的拿掉（救回的等伺服器回答再放回來）。
+ * 改了的換成改好的，刪了的拿掉，刪了又救回的放回刪之前的那一次（照做的先後）。
  */
 export function withUnsent(flow: Flow, saved: UnsentRecords): Flow {
 	const byId = new Map(takeRecords(flow).records.map((r) => [r.attempt.id, r]));
 	for (const { record } of saved.records) if (!byId.has(record.attempt.id)) byId.set(record.attempt.id, record);
+	// 刪之前的樣子：救回的照這個放回去
+	const deleted = new Map<string, StoredAttempt>();
 	for (const { request } of saved.amends) {
 		if (request.kind === 'changeRecords') {
 			for (const a of request.attempts as StoredAttempt[]) if (byId.has(a.attempt.id)) byId.set(a.attempt.id, a);
 		} else if (request.kind === 'deleteRecords') {
-			for (const id of request.ids) byId.delete(id);
+			for (const id of request.ids) {
+				const was = byId.get(id);
+				if (was) deleted.set(id, was);
+				byId.delete(id);
+			}
+		} else {
+			for (const id of request.ids) {
+				const was = deleted.get(id);
+				if (was && !byId.has(id)) byId.set(id, was);
+			}
 		}
 	}
 	return putRecords(flow, [...byId.values()]);
