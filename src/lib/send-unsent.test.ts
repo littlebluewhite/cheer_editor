@@ -7,6 +7,7 @@ import { fakeOfflineStore, fakeServer, flush } from '#lib/test-fakes.js';
 import { libSample } from '#lib/test-flows.js';
 
 const lin = { email: 'lin@example.com', name: '林教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
+const wang = { email: 'wang@example.com', name: '王教練', isAdmin: false, password: '我們這一隊今年一定會贏 go go' };
 
 /** 第 1 組小美記了一次（id 是 id）。 */
 const recorded = (id: string): UnsentRecords['records'][number] => ({
@@ -34,5 +35,28 @@ describe('傳這台沒傳的紀錄', () => {
 		await done;
 		expect(fake.state.flows[0].records?.map((r) => r.attempt.id)).toEqual(['tfirst0000001']);
 		expect(offline.of('c1')!.records.map((r) => r.record.attempt.id)).toEqual(['tsecond000002']);
+	});
+
+	it('伺服器沒照做的刪（記錄者刪別人記的，伺服器回答時那一次還在）：不算傳了，留在這台', async () => {
+		const wangs = recorded('twang00000001').record;
+		const fake = fakeServer({
+			users: [lin, wang],
+			signedIn: lin.email,
+			flows: [
+				{
+					id: 'c1',
+					owner: wang.email,
+					flow: libSample(),
+					updatedAt: '2026-11-07T00:00:00Z',
+					people: { [lin.email]: 'recorder' },
+					records: [{ ...wangs, by: wang.email }]
+				}
+			]
+		});
+		const amend = { ids: ['twang00000001'], request: { kind: 'deleteRecords' as const, ids: ['twang00000001'] } };
+		const offline = fakeOfflineStore({ unsent: [{ flowId: 'c1', flowName: '區賽', records: [], amends: [amend], dropped: [] }] });
+		await sendUnsent(fake.server, offline.store);
+		expect(fake.state.flows[0].records?.filter((r) => !r.gone).map((r) => r.attempt.id)).toEqual(['twang00000001']);
+		expect(offline.of('c1')!.amends).toEqual([amend]);
 	});
 });
