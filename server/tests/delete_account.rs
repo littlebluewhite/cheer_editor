@@ -293,11 +293,11 @@ async fn hear_any(socket: &mut Socket) -> Value {
     next.await.expect("伺服器一直沒說話")
 }
 
-/// 伺服器說的下一句，別的連線的改動也跳過。
+/// 伺服器說的下一句，別的連線的改動、一起跑的名單也跳過。
 async fn hear(socket: &mut Socket) -> Value {
     loop {
         let message = hear_any(socket).await;
-        if message["kind"] != "changed" {
+        if message["kind"] != "changed" && message["kind"] != "runThroughs" {
             return message;
         }
     }
