@@ -18,7 +18,7 @@ use crate::accounts::{
     password_problem, signed_in, signed_out, verify_password,
 };
 use crate::lockout;
-use crate::mail::{Mail, MailError};
+use crate::mail::Mail;
 
 /// 同一個 email 的忘記密碼信，一小時最多寄 3 封（OWASP：每個帳號限制重設請求的次數）。
 /// 超過的照樣回一樣的話，只是不寄。只記在記憶體：伺服器重開就歸零，擋的只是一直寄信煩人。
@@ -216,8 +216,8 @@ pub async fn delete_summary(
 }
 
 /// 要求刪除帳號：帳號馬上停用（跟管理員停用一樣：每台裝置登出、連結作廢），記下要求的時間，
-/// 這台的 cookie 清掉。寄他「收到了」、寄管理員「某某要求刪除帳號」；信寄不出去就什麼都不改
-/// （今天的額度用完回 503）。管理員不能要求（409：要先用伺服器指令換別人當管理員）。沒登入 401。
+/// 這台的 cookie 清掉。寄他「收到了」、寄管理員「某某要求刪除帳號」；先存好再寄，
+/// 信寄不出去（例：今天的額度用完）只記在伺服器紀錄，要求照樣算數。管理員不能要求（409：要先用伺服器指令換別人當管理員）。沒登入 401。
 pub async fn request_delete(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -277,17 +277,14 @@ pub async fn request_delete(
             ),
         });
     }
-    for mail in mails {
-        match state.mailer.send(mail).await {
-            Ok(()) => {}
-            Err(MailError::OverQuota) => {
-                return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
-            }
-            Err(err) => return Err(err.into()),
-        }
-    }
+    // 先存好再寄：信裡說「已經停用」，就要真的停用了；寄不出去的記下來，不復原
     tx.commit().await?;
     signed_out(&state, user_id);
+    for mail in mails {
+        if let Err(err) = state.mailer.send(mail).await {
+            tracing::error!(%err, user_id, "要求刪除帳號的信寄不出去");
+        }
+    }
     Ok((
         StatusCode::NO_CONTENT,
         [(header::SET_COOKIE, cleared_cookie())],

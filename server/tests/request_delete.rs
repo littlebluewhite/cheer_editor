@@ -303,21 +303,29 @@ async fn the_admin_cannot_request_and_signed_out_gets_401(db: sqlx::PgPool) {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
-/// 一台假的 Resend：寄信一律回 429（今天的額度用完了）。
-async fn resend_over_quota() -> reqwest::Url {
+/// 一台假的 Resend：第一封寄得出去，之後回 429（今天的額度剛好用完）。
+async fn resend_quota_runs_out_after_one() -> reqwest::Url {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let count = Arc::new(AtomicUsize::new(0));
     let fake = axum::Router::new().route(
         "/emails",
-        axum::routing::post(|| async {
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                axum::Json(json!({
-                    "statusCode": 429,
-                    "name": "daily_quota_exceeded",
-                    "message": "You have reached your daily email sending quota."
-                })),
-            )
+        axum::routing::post(move || {
+            let count = count.clone();
+            async move {
+                if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                    return (StatusCode::OK, axum::Json(json!({ "id": "first" })));
+                }
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    axum::Json(json!({
+                        "statusCode": 429,
+                        "name": "daily_quota_exceeded",
+                        "message": "You have reached your daily email sending quota."
+                    })),
+                )
+            }
         }),
     );
     tokio::spawn(async move { axum::serve(listener, fake).await.unwrap() });
@@ -325,23 +333,24 @@ async fn resend_over_quota() -> reqwest::Url {
 }
 
 #[sqlx::test]
-async fn when_the_mail_cannot_go_out_nothing_changes(db: sqlx::PgPool) {
-    // 先用記在記憶體的寄信建好人，再換成回 429 的 Resend
+async fn when_the_admin_mail_cannot_go_out_the_request_still_holds(db: sqlx::PgPool) {
+    // 先用記在記憶體的寄信建好人，再換成寄第二封就回 429 的 Resend：
+    // 他已經收到「帳號停用了」，帳號就要真的停用，不能因為管理員那封寄不出去又復原
     let s = Server::new(db.clone()).await;
     let wang = s.user(WANG, "王教練").await;
     s.user(ADMIN, "管理員").await;
     let mailer = Mailer::resend_at(
         "re_test",
         "test <t@example.com>".into(),
-        resend_over_quota().await,
+        resend_quota_runs_out_after_one().await,
     );
     let q = Server::with_mailer(db, mailer);
 
     let (status, _) = q
         .send("POST", "/api/account/delete", None, &wang.cookie)
         .await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _) = q.send("GET", "/api/me", None, &wang.cookie).await;
-    assert_eq!(status, StatusCode::OK, "還登入著");
-    assert!(q.login(WANG).await.is_some(), "沒停用");
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "登出了");
+    assert!(q.login(WANG).await.is_none(), "停用了");
 }
