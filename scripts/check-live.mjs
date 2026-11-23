@@ -1,10 +1,12 @@
 // 部署後看正式站那條路通不通（見 docs/deploy.md「部署完看一次」）：
 // 1. 網站的 /health 回 ok。
 // 2. 網頁的清單（/web-bundle.json，App 的殼照它更新網頁，ADR 0025）抓得到，清單裡每個檔抓下來大小和 SHA-256 都對得上。
-// 3. 音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。沒設 CORS 時瀏覽器傳音樂會失敗，伺服器的測試看不到（2026-11-20 上線那天就是這樣）。
+// 3. 自動填密碼用的 /.well-known/apple-app-site-association（#395）是 JSON、跟 repo 裡的 server/apple-app-site-association.json 一樣。
+// 4. 音樂的 R2 bucket 准網站的網址 PUT、GET（CORS）。沒設 CORS 時瀏覽器傳音樂會失敗，伺服器的測試看不到（2026-11-20 上線那天就是這樣）。
 // 用法：R2_MUSIC_BUCKET_URL=https://<帳號 id>.r2.cloudflarestorage.com/<bucket> npm run check:live
 // SITE_URL 預設 https://littlebluewhite.com。不用金鑰：CORS 的 preflight（OPTIONS）不驗簽名。
 
+import { APP_SITE_ASSOCIATION_PATH, checkAppSiteAssociation } from './app-site-association.mjs';
 import { checkWebBundle, WEB_BUNDLE_FILE } from './web-bundle.mjs';
 
 const site = (process.env.SITE_URL ?? 'https://littlebluewhite.com').replace(/\/$/, '');
@@ -27,6 +29,11 @@ try {
 {
 	const { files, problems } = await checkWebBundle(site);
 	report(problems.length === 0, `${site}/${WEB_BUNDLE_FILE} 和清單裡的 ${files} 個檔`, problems.slice(0, 5).join('；'));
+}
+
+{
+	const problems = await checkAppSiteAssociation(site);
+	report(problems.length === 0, `${site}/${APP_SITE_ASSOCIATION_PATH}`, problems.join('；'));
 }
 
 if (!bucket) {

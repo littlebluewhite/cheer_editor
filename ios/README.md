@@ -48,7 +48,8 @@ src/lib/app-shell.ts      網頁這邊：讀 window.__cheerShell，useShellIfInA
 ★ 的檔是「登記表」：一張票一格，**只改自己那一格**。格子中間空一行，幾張票同時加也合得起來（試過）。
 
 - **bundle ID**：`com.littlebluewhite.cheereditor`（專案檔的 `PRODUCT_BUNDLE_IDENTIFIER`）。#362 定的，已經在 Apple 登記、綁在 App Store Connect 的 App 紀錄上，不能再改。
-- **簽章**：自動簽章，沒有 Team（`DEVELOPMENT_TEAM` 不設）。現在只建模擬器版。簽章金鑰、Apple 帳號、裝置識別資料不進 repo。
+- **簽章**：自動簽章，Team ID `N5HMWTF697`（專案檔的 `DEVELOPMENT_TEAM`，#362 的留言；可以進公開的 repo，ADR 0023）。簽章金鑰、Apple 帳號、裝置識別資料不進 repo。
+- **自動填密碼**（#395）：`App/CheerEditor.entitlements` 開 Associated Domains `webcredentials:littlebluewhite.com`（專案檔的 `CODE_SIGN_ENTITLEMENTS`），網站送 `/.well-known/apple-app-site-association`（`server/apple-app-site-association.json`，docs/deploy.md「自動填密碼用的檔」）。網址跟 `SiteAddress.production` 同一個。包在 App 裡會不會真的出現自動填還沒驗（要付費帳號的真機，#401）；沒出現就拿掉這兩樣加上伺服器那條路由、線上檢查那條，Team ID 留著。
 - **自訂網址 `app://local/` 不要改**：這個來源是網頁存資料（IndexedDB、localStorage）的地方，換了就找不回來。
 - 版本：`MARKETING_VERSION`（0.1.0）、`CURRENT_PROJECT_VERSION`（建置號 1）。建置號就是網頁的清單 `minShellBuild` 比的那個（docs/deploy.md「網頁的清單」），殼一開始塞給網頁的 `shellBuild` 也是它。
 
