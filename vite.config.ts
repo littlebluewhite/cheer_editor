@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { withPwa } from '@vite-pwa/sveltekit';
@@ -103,10 +104,51 @@ export default defineConfig({
 					// Svelte 執行期警告算失敗（見檔案開頭）。
 					setupFiles: ['./src/svelte-warnings.setup.ts']
 				}
-			}
+			},
+			// 凍的情境（#396、ADR 0025）：商店裡的舊殼只認得它出版那天的情境。用到假殼的測試，對每一份凍的
+			// （bridge-scenarios/1.0/…）各再跑一次，scenario-shell.ts 照 scenarioFolder 拿那一份。部署前 CI 跑 npm test 就跑到。
+			...frozenScenarioFolders().flatMap((folder) => [
+				{
+					extends: './vite.config.ts',
+					test: {
+						name: `core@${folder}`,
+						environment: 'node' as const,
+						include: scenarioTests().filter((f) => !f.endsWith('.svelte.test.ts')),
+						provide: { scenarioFolder: folder }
+					}
+				},
+				{
+					extends: './vite.config.ts',
+					plugins: [svelteTesting()],
+					test: {
+						name: `components@${folder}`,
+						environment: 'jsdom' as const,
+						include: scenarioTests().filter((f) => f.endsWith('.svelte.test.ts')),
+						setupFiles: ['./src/svelte-warnings.setup.ts'],
+						provide: { scenarioFolder: folder }
+					}
+				}
+			])
 		]
 	}
 });
+
+/** bridge-scenarios/ 底下凍的那幾份（current 以外的資料夾）。 */
+function frozenScenarioFolders(): string[] {
+	return readdirSync('bridge-scenarios', { withFileTypes: true })
+		.filter((d) => d.isDirectory() && d.name !== 'current')
+		.map((d) => d.name);
+}
+
+/** 用到照情境演的假殼（#lib/scenario-shell.js）的測試檔。一個都沒有就是哪裡錯了：凍的情境等於沒跑。 */
+function scenarioTests(): string[] {
+	const found = readdirSync('src', { recursive: true, encoding: 'utf8' })
+		.filter((f) => f.endsWith('.test.ts'))
+		.map((f) => `src/${f}`)
+		.filter((f) => readFileSync(f, 'utf8').includes('#lib/scenario-shell.js'));
+	if (found.length === 0) throw new Error('找不到用情境檔的測試，凍的情境沒有東西可跑');
+	return found;
+}
 
 function base(): '' | `/${string}` {
 	const value = process.env.BASE_PATH ?? '';

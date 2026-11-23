@@ -1,0 +1,39 @@
+{
+	"about": "殼自己從網站更新網頁（#393、ADR 0025）：殼下載好新網頁就說 webBundleReady；網頁回到首頁時說 useNewWebBundle，殼換上、重新載入（回 true；沒有下載好的回 false）。雲端流程被擋（有新版）時網頁問 checkWebBundle：ready 新網頁下載好了、tooOld 網站上的要比這個殼新的殼（清單的 minShellBuild，#394）、none 沒有新的或抓不到。「更新」按鈕說 updateWebBundle（帶開著的雲端流程代號）：還沒下載就先抓，抓好馬上換（回 updated，殼重新載入到首頁 ?cloud=<代號>，網頁打開同一支）；tooOld、none 不換。",
+	"scenarios": [
+		{
+			"name": "新網頁下載好了，回到首頁時請殼換上",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [
+				{ "from": "shell", "name": "webBundleReady" },
+				{ "from": "web", "name": "useNewWebBundle", "reply": true }
+			]
+		},
+		{
+			"name": "沒有下載好的新網頁：殼不換",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [{ "from": "web", "name": "useNewWebBundle", "reply": false }]
+				},
+		{
+			"name": "雲端流程被擋：新網頁好了，按更新馬上換、回到同一支流程",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [
+				{ "from": "web", "name": "checkWebBundle", "reply": "ready" },
+				{ "from": "web", "name": "updateWebBundle", "body": { "flow": "c1" }, "reply": "updated" }
+			]
+		},
+		{
+			"name": "雲端流程被擋：網站上的要比這個殼新的殼，不換",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [{ "from": "web", "name": "checkWebBundle", "reply": "tooOld" }]
+		},
+		{
+			"name": "雲端流程被擋：新網頁抓不到，按更新也不換",
+			"boot": { "shellVersion": "0.1.0", "shellBuild": 1, "features": ["webUpdate"] },
+			"steps": [
+				{ "from": "web", "name": "checkWebBundle", "reply": "none" },
+				{ "from": "web", "name": "updateWebBundle", "body": { "flow": "c1" }, "reply": "none" }
+			]
+		}
+	]
+}

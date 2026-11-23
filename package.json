@@ -18,6 +18,7 @@
 		"check:sw": "node scripts/check-sw.mjs",
 		"check:live": "node scripts/check-live.mjs",
 		"ios:web": "node scripts/ios-web.mjs",
+		"ios:release": "node scripts/ios-release.mjs",
 		"test:server": "bash scripts/test-server.sh"
 	},
 	"devDependencies": {
