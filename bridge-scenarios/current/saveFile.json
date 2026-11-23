@@ -1,0 +1,141 @@
+{
+  "about": "存檔蓋回原本的檔、「傳給別人」（#385）。從「檔案」點進來、「開啟流程檔」選的原檔，殼交檔時一起給 target（書籤，base64，openFile.json）；網頁存檔時交回 target，殼蓋回那個檔，回 target 和檔名（書籤舊了回新的）。沒有 target（新的流程、分享選單給的副本）、記的檔找不到、寫不進去，殼叫出存檔畫面問存到哪，存成網頁給的名字（App 裡是 .cheer），回新的 target 和存成的檔名；按取消回 null。網頁把 target 跟草稿一起記（小設定），App 關掉再開照樣交回來。雲端流程「下載成流程檔」每次都不帶 target。「傳給別人」（shareFlowFile）：殼叫出分享選單送 .zip，button 是按的那顆鈕（iPad 從那裡跳出來），回有沒有送出。情境裡的書籤就是檔名的 base64；bytes 是 0x01 0x02（存的內容殼不看）。",
+  "scenarios": [
+    {
+      "name": "從「檔案」打開的流程檔：存檔蓋回原本那個檔，不問存到哪",
+      "boot": {
+        "shellVersion": "0.1.0",
+        "shellBuild": 1,
+        "features": ["openFile", "saveFile"]
+      },
+      "steps": [
+        {
+          "from": "web",
+          "name": "takeOpenedFile",
+          "reply": {
+            "name": "全國賽.cheer",
+            "bytes": "UEsDBBQAAAAIAMY4eF3dPRWf2AAAACYBAAAJAAAAZmxvdy5qc29uNY89TgMxEIXv8moXWZAQuKWioAmIBqUwzixY8k9kj/nRyiUVV+AA6VPnOJFyjMzuJp393ps33wzoUw6GXygXlyJ0d6PQ+/QFPSCaQNA4/G4P/3/H3R5iOfLr0Suc3aZA3yl485MqS/CTMjtrPJoCu0DL6kkiA8ZizpUUgov3HybyE1no64UI5vuxFmcnobualefExs/K7ULKAoU3AYR+XSmYunZpfhZ6DxT5bMyXyBXjf4ATTvSdQJ9jDyLE6r1UCK1s2qSRrjWZtbVwCss0AU9b7KVp1doJUEsBAhQAFAAAAAgAxjh4Xd09FZ/YAAAAJgEAAAkAAAAAAAAAAAAAAAAAAAAAAGZsb3cuanNvblBLBQYAAAAAAQABADcAAAD/AAAAAAA=",
+            "target": "5YWo5ZyL6LO9LmNoZWVy"
+          }
+        },
+        {
+          "from": "web",
+          "name": "saveFlowFile",
+          "body": {
+            "target": "5YWo5ZyL6LO9LmNoZWVy",
+            "name": "全國賽.cheer",
+            "bytes": "AQI="
+          },
+          "reply": {
+            "target": "5YWo5ZyL6LO9LmNoZWVy",
+            "name": "全國賽.cheer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "新的流程第一次存檔：問存到哪，存成 .cheer；第二次不問，蓋回那裡",
+      "boot": {
+        "shellVersion": "0.1.0",
+        "shellBuild": 1,
+        "features": ["saveFile"]
+      },
+      "steps": [
+        {
+          "from": "web",
+          "name": "saveFlowFile",
+          "body": {
+            "target": null,
+            "name": "新流程.cheer",
+            "bytes": "AQI="
+          },
+          "reply": {
+            "target": "5paw5rWB56iLLmNoZWVy",
+            "name": "新流程.cheer"
+          }
+        },
+        {
+          "from": "web",
+          "name": "saveFlowFile",
+          "body": {
+            "target": "5paw5rWB56iLLmNoZWVy",
+            "name": "新流程.cheer",
+            "bytes": "AQI="
+          },
+          "reply": {
+            "target": "5paw5rWB56iLLmNoZWVy",
+            "name": "新流程.cheer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "新的流程第一次存檔，存到哪按取消：回 null",
+      "boot": {
+        "shellVersion": "0.1.0",
+        "shellBuild": 1,
+        "features": ["saveFile"]
+      },
+      "steps": [
+        {
+          "from": "web",
+          "name": "saveFlowFile",
+          "body": {
+            "target": null,
+            "name": "新流程.cheer",
+            "bytes": "AQI="
+          },
+          "reply": null
+        }
+      ]
+    },
+    {
+      "name": "App 關掉再開：網頁交回記著的書籤，蓋回同一個檔",
+      "boot": {
+        "shellVersion": "0.1.0",
+        "shellBuild": 1,
+        "features": ["saveFile"]
+      },
+      "steps": [
+        {
+          "from": "web",
+          "name": "saveFlowFile",
+          "body": {
+            "target": "5YWo5ZyL6LO9LmNoZWVy",
+            "name": "全國賽.cheer",
+            "bytes": "AQI="
+          },
+          "reply": {
+            "target": "5YWo5ZyL6LO9LmNoZWVy",
+            "name": "全國賽.cheer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "傳給別人：殼叫出分享選單送 .zip",
+      "boot": {
+        "shellVersion": "0.1.0",
+        "shellBuild": 1,
+        "features": ["saveFile"]
+      },
+      "steps": [
+        {
+          "from": "web",
+          "name": "shareFlowFile",
+          "body": {
+            "name": "全國賽.zip",
+            "bytes": "AQI=",
+            "button": {
+              "x": 10,
+              "y": 20,
+              "width": 80,
+              "height": 32
+            }
+          },
+          "reply": true
+        }
+      ]
+    }
+  ]
+}

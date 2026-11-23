@@ -16,6 +16,8 @@ export interface FileSaver {
 	readonly fileName?: string;
 	/** 觸控螢幕（手機、平板）：下載新檔時不叫教練改用 Chrome、Edge（那上面也不能存回原檔）。 */
 	readonly touch?: boolean;
+	/** App 裡存回哪個檔（殼給的書籤，#385）：跟草稿一起記，App 關掉再開用它建回存檔薄層（createSaver）。網頁版沒有。 */
+	readonly remembered?: string;
 }
 
 /**

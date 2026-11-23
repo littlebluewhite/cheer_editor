@@ -33,6 +33,9 @@ enum ShellParts {
             // #384
             OpenFilePart.inApp(context),
 
+            // #385
+            SaveFilePart.inApp(context),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 
