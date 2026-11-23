@@ -149,6 +149,8 @@
 		}
 		if (!deleting) return;
 		const left = await unsentFlows(offline);
+		// 最後再看一次的時候按了取消：也不送
+		if (!deleting) return;
 		if (!left.length) return requestDelete();
 		unsentForDelete = true;
 		unsentAtLogout = left;

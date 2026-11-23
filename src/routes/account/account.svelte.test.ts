@@ -256,6 +256,29 @@ describe('我的帳號頁', () => {
 		expect(screen.getByRole('button', { name: '要求刪除帳號' }).hasAttribute('disabled')).toBe(false);
 	});
 
+	it('要求刪除帳號：傳完、最後再看一次這台還有沒有沒傳的時候按「取消」，也不送出要求', async () => {
+		const { state, went, offline } = await accountPage();
+		await fireEvent.click(screen.getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		const read = offline.store.unsent.bind(offline.store);
+		const gate = Promise.withResolvers<void>();
+		let reads = 0;
+		offline.store.unsent = async () => {
+			// 第 1 次是傳的時候讀的，第 2 次是傳完再看一次
+			if (++reads === 2) await gate.promise;
+			return read();
+		};
+		const box = screen.getByRole('dialog', { name: '要求刪除帳號？' });
+		await fireEvent.click(within(box).getByRole('button', { name: '要求刪除帳號' }));
+		await flush();
+		expect(reads).toBe(2);
+		await fireEvent.click(within(box).getByRole('button', { name: '取消' }));
+		gate.resolve();
+		await flush();
+		expect(state.users[0].disabled).toBeFalsy();
+		expect(went).toEqual([]);
+	});
+
 	it('要求刪除帳號：今天寄不出信，確認框裡說明天再試，帳號不變', async () => {
 		const { state } = await accountPage();
 		state.mailQuota = true;
