@@ -393,7 +393,7 @@
 	"members_delete_item_squad_role": "技「{action}」（{segment} {from}）：スタンツグループ {squad} の{role}",
 	"phases_delete_item": "削除：フェーズ {phase}",
 	"flow_file_not_a_zip": "ファイルが壊れているか、このエディターで保存したルーティーンファイルではありません",
-	"flow_file_no_json": "zip にルーティーンが入っていません。このエディターで保存したルーティーンファイルではありません",
+	"flow_file_no_json": "ファイルにルーティーンが入っていません。このエディターで保存したルーティーンファイルではありません",
 	"flow_file_broken": "ルーティーンファイルのデータが壊れています",
 	"flow_file_image": "これは画像で、ルーティーンファイルではありません",
 	"flow_file_newer": "新しいバージョンのエディターで保存されています。ページを再読み込みしてエディターを更新してください",

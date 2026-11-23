@@ -37,13 +37,13 @@ export function videoFileName(flowName: string): string {
 	return `${safeFileBase(flowName, m.file_default_name())}.mp4`;
 }
 
-/** 存檔、開檔對話框的檔案類型（說明照畫面的語言，每次叫的時候寫）。 */
+/** 存檔對話框的檔案類型（說明照畫面的語言，每次叫的時候寫）。開檔不篩，見 browserFilePicker。 */
 const zipTypes = () => [{ description: m.file_zip_type(), accept: { 'application/zip': ['.zip'] } }];
 
 /** File System Access 裡用到的那一點（TypeScript 的 lib.dom 沒有 showSaveFilePicker、showOpenFilePicker、requestPermission）。 */
 interface PickerWindow {
 	showSaveFilePicker(options: { suggestedName: string; types: ReturnType<typeof zipTypes> }): Promise<FileSystemFileHandle>;
-	showOpenFilePicker(options: { types: ReturnType<typeof zipTypes> }): Promise<FileSystemFileHandle[]>;
+	showOpenFilePicker(options: object): Promise<FileSystemFileHandle[]>;
 }
 interface PermissionHandle {
 	requestPermission?(options: { mode: 'readwrite' }): Promise<PermissionState>;
@@ -63,7 +63,8 @@ export function browserFilePicker(): (() => Promise<PickedFile | null>) | null {
 	if (typeof window === 'undefined' || !('showOpenFilePicker' in window)) return null;
 	return async () => {
 		try {
-			const [handle] = await (window as unknown as PickerWindow).showOpenFilePicker({ types: zipTypes() });
+			// 不篩副檔名：篩 application/zip 的話 Android Chrome 會藏起 .cheer（ADR 0024）。選錯檔由開檔的錯誤訊息講。
+			const [handle] = await (window as unknown as PickerWindow).showOpenFilePicker({});
 			return { file: await handle.getFile(), saver: createBrowserSaver(handle) };
 		} catch (e) {
 			if (e instanceof DOMException && e.name === 'AbortError') return null;

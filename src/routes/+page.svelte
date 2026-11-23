@@ -1024,7 +1024,6 @@
 						bind:this={menuFileInput}
 						class="menu-file"
 						type="file"
-						accept=".zip"
 						aria-label={m.editor_open_file()}
 						aria-hidden="true"
 						tabindex="-1"
@@ -1507,7 +1506,7 @@
 		{/if}
 		<div class="home-open">
 			{#if !narrow}<span>{m.home_have_file()}</span>{/if}
-			<label class="open btn" class:primary={narrow}><Icon name="open" />{m.editor_open_file()}<input type="file" accept=".zip" onclick={pickOpen} onchange={open} /></label>
+			<label class="open btn" class:primary={narrow}><Icon name="open" />{m.editor_open_file()}<input type="file" onclick={pickOpen} onchange={open} /></label>
 		</div>
 		{#if editor.file.openError}<p class="error" {@attach revealAlert(editor.file.openError)}>{editor.file.openError}</p>{/if}
 	{/snippet}

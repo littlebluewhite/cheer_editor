@@ -226,11 +226,13 @@ export function writeFlowFile(flow: Flow, audio: AudioBytes): Uint8Array {
 /**
  * 流程檔（zip 位元組）→ 流程 ＋ 音樂資料。舊版自動升級，比編輯器新的不打開（見 checkFlowDocument）。
  * flow.json 不在最上層、而在唯一一層資料夾裡（電腦重新壓縮過）也打得開，音樂檔照那個資料夾找。
- * upgrades 只有測試會換。
+ * 被 Mac 的 LINE 再包一層 zip 的（zip 裡沒有 flow.json，最上層只有一個檔，那個檔本身是流程檔）打開裡面那個，只拆一層（ADR 0024）。
+ * upgrades 只有測試會換；unwrap 是拆過一層後不再拆。
  */
 export function readFlowFile(
 	bytes: Uint8Array,
-	upgrades: Record<number, Upgrade> = UPGRADES
+	upgrades: Record<number, Upgrade> = UPGRADES,
+	unwrap = true
 ): ReadFlowFileResult {
 	let files: Record<string, Uint8Array>;
 	try {
@@ -239,7 +241,15 @@ export function readFlowFile(
 		return { kind: 'error', ...(isImage(bytes) ? IMAGE : NOT_A_ZIP) };
 	}
 	const folder = folderOf(files);
-	if (folder === null) return { kind: 'error', ...NO_JSON };
+	if (folder === null) {
+		const inner = unwrap ? onlyFile(files) : null;
+		if (inner === null) return { kind: 'error', ...NO_JSON };
+		const r = readFlowFile(inner, upgrades, false);
+		// 裡面那個檔不是流程檔：照外面那層說「沒有流程」。
+		return r.kind === 'error' && ['flow_file_not_a_zip', 'flow_file_image', 'flow_file_no_json'].includes(r.why?.code ?? '')
+			? { kind: 'error', ...NO_JSON }
+			: r;
+	}
 	let doc: unknown;
 	try {
 		doc = JSON.parse(strFromU8(files[folder + JSON_FILE]));
@@ -341,6 +351,12 @@ function folderOf(files: Record<string, Uint8Array>): string | null {
 		.filter((parts) => parts.length === 2 && parts[0] !== '' && parts[1] === JSON_FILE)
 		.map(([folder]) => `${folder}/`);
 	return found.length === 1 ? found[0] : null;
+}
+
+/** zip 最上層唯一的那個檔（Mac 壓縮時多放的 __MACOSX 不算）；不只一個、或在資料夾裡，是 null。 */
+function onlyFile(files: Record<string, Uint8Array>): Uint8Array | null {
+	const names = Object.keys(files).filter((k) => !k.startsWith('__MACOSX/'));
+	return names.length === 1 && !names[0].includes('/') ? files[names[0]] : null;
 }
 
 function isDocument(doc: unknown): doc is FlowDocument {

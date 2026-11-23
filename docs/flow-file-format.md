@@ -5,7 +5,8 @@
 
 ## zip 裡有什麼
 
-存成 `流程名.zip`：
+流程檔有兩種名字，內容一模一樣（ADR 0024）：網頁版存檔、app 的「傳給別人」存成 `流程名.zip`；app 存進「檔案」的叫 `流程名.cheer`。
+兩種都打得開，看的是內容不是副檔名，所以網頁版選檔不篩副檔名（只篩 `.zip` 的話 iPhone Safari、Android Chrome 選不到 `.cheer`）。zip 裡：
 
 ```
 flow.json        { "formatVersion": 16, "flow": { … } }
@@ -16,6 +17,9 @@ audio/a2.m4a
 - `flow.json` 只有 `formatVersion` 和 `flow` 兩層。延遲校正之類的本機設定不進檔（延遲校正存在瀏覽器裡，±1000 毫秒，`MAX_LATENCY_MS`；超出就當 0）。
 - 開檔時 `flow.json` 不在最上層、而在唯一一層資料夾裡（例：電腦解壓再重新壓縮成 `練習用/flow.json`）也打得開，
   音樂檔照同一個資料夾找（`練習用/audio/a1.mp3`）。Mac 壓縮時多放的 `__MACOSX/` 不算。存檔一律放最上層。
+- 拆兩層：Mac 的 LINE 會把不認得的檔（例如 `.cheer`）再包成同名的 `.zip`，裡面直接是原本那一個檔，沒有多一層資料夾（#364 真機看過）。
+  開檔時最上層和唯一一層資料夾裡都沒有 `flow.json`，但 zip 最上層只有一個檔（`__MACOSX/` 不算），就把那個檔當流程檔打開，
+  音樂檔照它裡面找。只拆一層；那個檔不是流程檔（不是 zip，或裡面沒有 `flow.json`）就照下面說「檔案裡沒有流程」。
 - `flow` 的欄位：`name`、`field`（`strips`、`layout`: `vertical`／`horizontal`）、`timeRules`、`members`、
   `audio`、`segments`、`formations`、`customRoles`、`actions`，可有可無的 `markers`、`bookmarks`，下面各節逐一說明。
 
@@ -74,7 +78,7 @@ audio/a2.m4a
   - 不是 zip（zip 壞掉了、拿別的檔來開）：「檔案壞掉了，或不是這個編輯器存的流程檔」；
     檔名是音樂檔（mp3、m4a、wav）時改說「這是音樂檔，不是流程檔」，叫教練去段設定載入；
     檔頭是圖片（PNG、JPEG、GIF、WebP、HEIC）時改說「這是圖片，不是流程檔」。
-  - 最上層和唯一一層資料夾裡都沒有 `flow.json`：「zip 裡沒有流程，不是這個編輯器存的流程檔」。
+  - 最上層和唯一一層資料夾裡都沒有 `flow.json`，也拆不出兩層：「檔案裡沒有流程，不是這個編輯器存的流程檔」（不說「zip」：`.cheer` 也是流程檔）。
   - JSON 壞掉、沒有 `formatVersion` 或 `flow`、舊版號但沒有升級步驟：「流程檔裡的資料壞掉了」。
   - `flow` 裡任何一個欄位的型別不對（例如位置不是 `[x, y]`、分類不在清單裡），或指到不存在的段、音樂檔、隊員：
     也是「流程檔裡的資料壞掉了」，不會開到一半壞掉。

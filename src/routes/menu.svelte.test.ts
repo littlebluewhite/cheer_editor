@@ -130,7 +130,8 @@ describe('上方列的「選單」', () => {
 		await withSample();
 		const input = screen.getByLabelText('開啟流程檔') as HTMLInputElement;
 		expect(input.type).toBe('file');
-		expect(input.accept).toBe('.zip');
+		// 不篩副檔名：只篩 .zip 的話，iPhone Safari 選不到 .cheer（ADR 0024）。
+		expect(input.accept).toBe('');
 		let clicked = 0;
 		input.addEventListener('click', () => clicked++);
 		await fromMenu('開啟流程檔');
