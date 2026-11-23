@@ -720,6 +720,8 @@
 	"login_expired": "You've been signed in for over 30 days. Please sign in again.",
 	"login_expired_unsent_one": "You've been signed in for over 30 days. Please sign in again. This device has {n} rep not uploaded yet; it uploads automatically once you sign in.",
 	"login_expired_unsent": "You've been signed in for over 30 days. Please sign in again. This device has {n} reps not uploaded yet; they upload automatically once you sign in.",
+	"login_unsent_one": "This device has {n} rep not uploaded yet; it uploads automatically once you sign in.",
+	"login_unsent": "This device has {n} reps not uploaded yet; they upload automatically once you sign in.",
 	"login_wrong": "Wrong email or password",
 	"login_wrong_hint": "Still can't get in? Ask the admin.",
 	"login_locked_hint": "If you forgot your password, use “Forgot password” to reset it.",

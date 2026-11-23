@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 登入頁（#190 的 A）：Email、密碼（「顯示」）、登入。設好密碼跳來時帶著 ?email=…&passwordSet=1：綠色一行、email 填好。
 	// 試太多次（鎖住）說要等多久，照樣能按「忘記密碼？」；登入超過 30 天被登出時，上面黃色一行（#246），
-	// 這台還有沒傳的成功率紀錄時加一句幾筆、登入後會自動傳（#260）。
+	// 這台還有沒傳的成功率紀錄時加一句幾筆、登入後會自動傳（#260）；伺服器不知道過期了（過期的登入每天清掉）也照樣說這一句。
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import AccountCard from '#lib/components/AccountCard.svelte';
@@ -67,7 +67,8 @@
 		{#if passwordSet}<p class="ok" role="status">{m.login_password_set()}</p>
 		{:else if expired}<p class="warn" role="status">
 				{unsent ? (unsent === 1 ? m.login_expired_unsent_one : m.login_expired_unsent)({ n: unsent }) : m.login_expired()}</p
-			>{/if}
+			>
+		{:else if unsent}<p class="warn" role="status">{(unsent === 1 ? m.login_unsent_one : m.login_unsent)({ n: unsent })}</p>{/if}
 		<label class="field">
 			<span>Email</span>
 			<input type="email" autocomplete="username" required bind:value={email} />

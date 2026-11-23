@@ -720,6 +720,8 @@
 	"login_expired": "登入超過 30 天了，請再登入一次。",
 	"login_expired_unsent_one": "登入超過 30 天了，請再登入一次。這台還有 {n} 筆成功率紀錄沒傳，登入後會自動傳。",
 	"login_expired_unsent": "登入超過 30 天了，請再登入一次。這台還有 {n} 筆成功率紀錄沒傳，登入後會自動傳。",
+	"login_unsent_one": "這台還有 {n} 筆成功率紀錄沒傳，登入後會自動傳。",
+	"login_unsent": "這台還有 {n} 筆成功率紀錄沒傳，登入後會自動傳。",
 	"login_wrong": "email 或密碼不對",
 	"login_wrong_hint": "一直進不去？請找管理員。",
 	"login_locked_hint": "忘記密碼的話，按『忘記密碼』重設。",

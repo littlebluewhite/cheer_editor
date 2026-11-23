@@ -117,6 +117,19 @@ describe('登入頁', () => {
 		expect(screen.getByRole('status').textContent!.trim()).toBe('登入超過 30 天了，請再登入一次。這台還有 2 筆成功率紀錄沒傳，登入後會自動傳。');
 	});
 
+	it('伺服器不知道登入過期（例：過期的登入每天清掉了），這台還有沒傳的成功率紀錄：照樣黃色一行「這台還有 N 筆成功率紀錄沒傳，登入後會自動傳。」', async () => {
+		history.replaceState(null, '', '/login');
+		const fake = fakeServer({ users: [lin] });
+		const row = { id: 'tabc123def456', date: '2026-11-07', action: '技巧·Lib', who: '第 1 組 小美', marks: '✓··', runThrough: false };
+		const record = { actionId: 'x1', attempt: { id: 'tabc123def456', date: '2026-11-07', who: 'g1', practice: 'drill' as const, whole: true, marks: { p1: '✓' as const } } };
+		const unsent = [{ flowId: 'c1', flowName: '區賽', records: [{ record, row }], amends: [], dropped: [] }];
+		render(Login, { server: fake.server, go: () => {}, offline: fakeOfflineStore({ unsent }).store });
+		await flush();
+		const line = screen.getByRole('status');
+		expect(line.textContent!.trim()).toBe('這台還有 1 筆成功率紀錄沒傳，登入後會自動傳。');
+		expect(line.classList.contains('warn')).toBe(true);
+	});
+
 	it('沒到期：沒有黃色那一行', async () => {
 		loginPage();
 		await flush();
