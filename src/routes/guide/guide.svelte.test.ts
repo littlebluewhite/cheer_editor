@@ -509,6 +509,7 @@ describe('App 的做法（#398）', () => {
 		expect(near('八拍表'), '分享').toContain('在列印畫面按「分享」');
 		expect(near('輸出影片'), '沒有輸出影片').toMatch(/App 裡：.*沒有「輸出影片」/);
 		expect(near('登入和帳號'), '各登各的').toContain('各登各的');
+		expect(near('雲端流程和本機流程'), '各存各的').toContain('各存各的、各登各的');
 		expect(near('一起記成功率'), '不用加').toContain('不用加到主畫面');
 		expect(near('一起記成功率'), '換手機').toContain('換手機前');
 	});
