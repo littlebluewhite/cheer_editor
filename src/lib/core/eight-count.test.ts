@@ -7,6 +7,7 @@ import {
 	eightCountRows as rowsOf,
 	eightCountView,
 	nearbyEights as nearbyOf,
+	nearestEightStart,
 	formationNowWhy,
 	memberNowWhy,
 	clearPhaseBeats,
@@ -68,6 +69,29 @@ const action = (overrides: Partial<NewActionInput>): NewActionInput => ({
 		{ memberId: 'm2', role: '主底' }
 	],
 	...overrides
+});
+
+describe('放開進度條：對齊最近的八拍開頭', () => {
+	it('音樂段對齊最近的八拍開頭；最後不滿一個八拍的也算一個', () => {
+		// sample 的八拍從 0、3.2、6.4 秒開始，口號 1 從 8 秒開始
+		expect(nearestEightStart(sample(), 1.5)).toBeCloseTo(0, 6);
+		expect(nearestEightStart(sample(), 4)).toBeCloseTo(3.2, 6);
+		expect(nearestEightStart(sample(), 5)).toBeCloseTo(6.4, 6);
+		expect(nearestEightStart(sample(), 7)).toBeCloseTo(6.4, 6);
+	});
+
+	it('口號段整段算一個：放在口號段裡（快到結尾也是）回到口號段的開頭，不是每 5 秒一停、不跳到流程結尾', () => {
+		expect(nearestEightStart(sample(), 13)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(sample(), 17.9)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(sample(), 18)).toBeCloseTo(8, 6);
+	});
+
+	it('口號段後面還有音樂段：口號段整段算一個八拍，放在段的後半離下一段的開頭比較近，就停在下一段的開頭', () => {
+		// 口號 1 從 8 秒到 18 秒，後面接音樂 2（18 秒開始）
+		const flow = flowOf(addSegment(sample(), 'music'));
+		expect(nearestEightStart(flow, 12.9)).toBeCloseTo(8, 6);
+		expect(nearestEightStart(flow, 16)).toBeCloseTo(18, 6);
+	});
 });
 
 describe('八拍表的列：全隊', () => {
@@ -531,6 +555,17 @@ describe('八拍表的小站位圖範圍', () => {
 		let flow = flowOf(createFlow({ name: '空', field: { strips: 9, layout: 'vertical' } }));
 		flow = flowOf(addSegment(flow, 'music'));
 		expect(eightCountView(flow)).toBeNull();
+	});
+
+	it('站位很多（5000 張、每張 40 人，一共 20 萬個位置）：照樣算得出來，不會因為一次傳太多參數出錯', () => {
+		const base = sample().formations[0];
+		// 最左、最右、最上、最下分在不同張
+		const formations = Array.from({ length: 5000 }, (_, f) => ({
+			...base,
+			id: `f${f}`,
+			pos: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`m${i}`, [f === 1 ? -3 : f === 2 ? 6 : i % 5, f === 3 ? -4 : f === 4 ? 2 : 0] as [number, number]]))
+		}));
+		expect(eightCountView({ ...sample(), formations })).toEqual({ x: -3, y: -4, width: 9, height: 6 });
 	});
 });
 

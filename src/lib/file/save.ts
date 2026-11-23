@@ -1,8 +1,8 @@
 // 存檔薄層：把流程檔的位元組寫到教練的電腦。
 // Chrome、Edge 有 File System Access：用它開檔的流程，存檔就存回那個檔；新建的第一次跳存檔對話框，之後蓋回同一個檔。
-// Safari、Firefox 沒有（見 docs/research/browser-capabilities.md），每次都下載一個新檔。
+// Safari、Firefox 沒有（見 docs/research/browser-capabilities.md），每次都下載一個新檔。雲端流程「⤓ 下載」每種瀏覽器都下載新檔（downloadFile）。
 // iPad（觸控螢幕、能分享檔案）改開分享選單：存到「檔案」App，或直接用 LINE 傳給隊員（docs/adr/0005-ipad-touch.md）。
-// 這一層不寫自動測試，改用手動檢查（規格的 Testing Decisions）；頁面測試換成假的 FileSaver。
+// 這一層不寫自動測試，改用手動檢查（規格的 Testing Decisions）；頁面測試換成假的 FileSaver、假的下載。
 
 import { m } from '#lib/paraglide/messages.js';
 
@@ -12,15 +12,8 @@ export type SaveOutcome = 'saved' | 'shared' | 'downloaded' | 'cancelled';
 /** 一支流程一個：記得上次存到哪個檔，下次存回同一個。開別的流程時換一個新的。 */
 export interface FileSaver {
 	save(bytes: Uint8Array, fileName: string): Promise<SaveOutcome>;
-	/**
-	 * 還沒有要存回的檔就先問存到哪（Chrome、Edge 的存檔對話框），之後 save 存到那裡；回傳 false 是按了取消。
-	 * 存檔前還要等伺服器的（下載雲端流程）先問：等太久按下去的那一下就過期了，Chrome 不讓跳存檔對話框。沒有是不用先問。
-	 */
-	chooseFile?(fileName: string): Promise<boolean>;
 	/** 存回的那個檔叫什麼（Chrome、Edge：開檔拿到的、存檔對話框選的，教練可能改過名字）；沒有就是存檔時給的檔名。 */
 	readonly fileName?: string;
-	/** 跟另一個存到同一個檔（Chrome、Edge：同一個資料夾的同一個檔）；沒有是分不出來。 */
-	sameFile?(other: FileSaver): Promise<boolean>;
 	/** 觸控螢幕（手機、平板）：下載新檔時不叫教練改用 Chrome、Edge（那上面也不能存回原檔）。 */
 	readonly touch?: boolean;
 }
@@ -79,9 +72,6 @@ export function browserFilePicker(): (() => Promise<PickedFile | null>) | null {
 	};
 }
 
-/** 瀏覽器存檔的現在存回哪個檔（sameFile 比兩個存檔的）。 */
-const handles = new WeakMap<FileSaver, () => FileSystemFileHandle | null>();
-
 /** handle：開檔時拿到的檔（存回它）；沒有就第一次存檔時問存到哪。 */
 export function createBrowserSaver(opened: FileSystemFileHandle | null = null): FileSaver {
 	let handle = opened;
@@ -101,29 +91,9 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 		get fileName() {
 			return handle?.name;
 		},
-		async sameFile(other) {
-			const theirs = handles.get(other)?.();
-			return !!handle && !!theirs && handle.isSameEntry(theirs);
-		},
 		touch: matchMedia('(pointer: coarse)').matches,
-		async chooseFile(fileName) {
-			return handle || !('showSaveFilePicker' in window) ? true : pick(fileName);
-		},
 		async save(bytes, fileName) {
-			if (!('showSaveFilePicker' in window)) {
-				const file = new File([bytes as Uint8Array<ArrayBuffer>], fileName, { type: 'application/zip' });
-				if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
-					try {
-						await navigator.share({ files: [file] });
-						return 'shared';
-					} catch (e) {
-						if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled';
-						throw e;
-					}
-				}
-				download(bytes, fileName);
-				return 'downloaded';
-			}
+			if (!('showSaveFilePicker' in window)) return downloadFile(bytes, fileName);
 			if (handle && askWrite) {
 				askWrite = false;
 				const granted = (await (handle as PermissionHandle).requestPermission?.({ mode: 'readwrite' })) ?? 'granted';
@@ -137,8 +107,26 @@ export function createBrowserSaver(opened: FileSystemFileHandle | null = null): 
 			return 'saved';
 		}
 	};
-	handles.set(saver, () => handle);
 	return saver;
+}
+
+/**
+ * 存成一個新的流程檔，不碰電腦裡原本的檔：觸控螢幕（能分享檔案）開分享選單，其他下載一個新檔。
+ * 沒有存檔對話框的瀏覽器存檔走這條；雲端流程「⤓ 下載」每種瀏覽器都走這條（#344）。
+ */
+export async function downloadFile(bytes: Uint8Array, fileName: string): Promise<SaveOutcome> {
+	const file = new File([bytes as Uint8Array<ArrayBuffer>], fileName, { type: 'application/zip' });
+	if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+		try {
+			await navigator.share({ files: [file] });
+			return 'shared';
+		} catch (e) {
+			if (e instanceof DOMException && e.name === 'AbortError') return 'cancelled';
+			throw e;
+		}
+	}
+	download(bytes, fileName);
+	return 'downloaded';
 }
 
 /** 存影片對話框的檔案類型（同 zipTypes）。 */

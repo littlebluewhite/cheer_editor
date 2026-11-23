@@ -85,7 +85,9 @@
 		crop = null,
 		numberBand = NUMBER_BAND,
 		tapped = null,
-		ontap
+		ontap,
+		playing = false,
+		peopleBounds = null
 	}: {
 		field: FieldConfig;
 		/** 照名單順序。 */
@@ -126,6 +128,10 @@
 		tapped?: string | null;
 		/** 沒有編輯器時（手機的檢視畫面）點一下：點到誰（點空白處是 null）。點兩下的第二下是放大，不叫。 */
 		ontap?: (memberId: string | null) => void;
+		/** 正在播放：只能看的場地放大了又標了「我」，畫面跟著「我」。 */
+		playing?: boolean;
+		/** 整支流程大家站過的地方（見 eightCountView）：只能看的場地沒放大時多一顆「只看有人的地方」，放大到這裡（四周留 CROP_MARGIN）。 */
+		peopleBounds?: Rect | null;
 	} = $props();
 
 	// controls 一開始給了就不換（編輯頁或八拍表）。
@@ -155,6 +161,8 @@
 	 * 沒有編輯器時看有沒有給 ontap：八拍表的小站位圖沒給（沒人排上場時也不裁）。
 	 */
 	const viewOnly = $derived(!crop && (session ? !session.editable : !!ontap));
+	/** 點得到人的場地（編輯頁、手機的檢視畫面）：每個圓點是 Tab 停得到的按鈕，Enter 跟點一下一樣。八拍表的小站位圖不算。 */
+	const pickable = $derived(!!session || (!crop && !!ontap));
 	/** 標了「我」：別人畫淡一點（「我」和圈起來的人不淡）。八拍表的小站位圖不淡：我是塗滿的。 */
 	const dim = (id: string) => !crop && marked.length > 0 && !marked.includes(id) && !lit.includes(id);
 
@@ -190,15 +198,30 @@
 	let zoom = $state(1);
 	/** 放大時畫面中心（公尺）；null = 整個場地的中心。 */
 	let center = $state<Position | null>(null);
+	/** 這次放大後使用者自己移動過畫面（拖、滾輪平移、兩根手指只移動或縮小）。回整個場地才清掉。 */
+	let movedByHand = $state(false);
+	/** 正在看「只看有人的地方」，還沒在裡面再放大。回整個場地、在裡面兩根手指再放大（endPinch）清掉。 */
+	let fitted = $state(false);
+	/** 兩根手指按著：捏的時候畫面不跟，放開再看。放開到一根也不接著拖人，要全部放開。 */
+	let pinching = $state(false);
+	/**
+	 * 這次放大跟著「我」（#331）：只看這幾件事，不在別的地方開關。
+	 * 放大了、沒在捏、這次放大沒自己移動過畫面、不是還沒在裡面再放大的「只看有人的地方」。
+	 */
+	const follow = $derived(zoom > 1 && !pinching && !movedByHand && !fitted);
 	/** 裁的時候人外面留多少（公尺）。 */
 	const CROP_MARGIN = 1;
 	/** 八拍表小站位圖：長邊最少放得下幾個圓點並排（範圍越大圓點越大，見 dotScale）。 */
 	const MINI_DOTS_ACROSS = 12;
+	/** 一塊範圍四周留 CROP_MARGIN（八拍表的小站位圖、「只看有人的地方」同一個留法）。 */
+	const padded = (r: Rect): Rect => {
+		const m = CROP_MARGIN;
+		return { x: r.x - m, y: r.y - m, width: r.width + 2 * m, height: r.height + 2 * m };
+	};
+	/** 一個畫面：放大幾倍、中心在哪（公尺）。 */
+	type ZoomView = { zoom: number; center: Position };
 	const view = $derived.by(() => {
-		if (crop) {
-			const m = CROP_MARGIN;
-			return { x: crop.x - m, y: crop.y - m, width: crop.width + 2 * m, height: crop.height + 2 * m };
-		}
+		if (crop) return padded(crop);
 		const width = full.width / zoom;
 		const height = full.height / zoom;
 		const [cx, cy] = center ?? [full.x + full.width / 2, full.y + full.height / 2];
@@ -206,6 +229,7 @@
 		const y = clamp(cy - height / 2, full.y, full.y + full.height - height);
 		return { x, y, width, height };
 	});
+	const viewCenter = $derived<Position>([view.x + view.width / 2, view.y + view.height / 2]);
 
 	/**
 	 * 圓點（連選取圈、標記、組號、影子）在場地單位裡放大幾倍：看整個場地時放大到有最小尺寸（夠大就是 1）；
@@ -384,7 +408,9 @@
 
 	function setZoom(next: number, anchor?: Position, pan: Position = [0, 0]) {
 		const z = clamp(next, 1, MAX_ZOOM);
-		const c: Position = [view.x + view.width / 2, view.y + view.height / 2];
+		// 回整個場地：這次放大的事都清掉，下次放大重新跟著「我」。捏到一半經過整個場地不算，放開時停在整個場地才算（endPinch）。
+		if (z === 1 && !pinching) movedByHand = fitted = false;
+		const c = viewCenter;
 		// 以 anchor 為不動點縮放（滾輪：滑鼠下面那一點不動）；pan 是縮放後再挪的公尺數（兩指拖）。
 		const [cx, cy] = anchor
 			? [anchor[0] + ((c[0] - anchor[0]) * zoom) / z, anchor[1] + ((c[1] - anchor[1]) * zoom) / z]
@@ -402,6 +428,50 @@
 		}
 	}
 
+	/**
+	 * 「只看有人的地方」：放大幾倍、中心在哪，剛好包住大家站過的地方（超出整個場地的部分不算）。
+	 * 沒有人站好、或放大不了（範圍沒有比整個場地小）是 null，不出現這顆。
+	 */
+	const peopleFit = $derived.by((): ZoomView | null => {
+		if (!peopleBounds) return null;
+		const r = padded(peopleBounds);
+		const x0 = Math.max(r.x, full.x);
+		const y0 = Math.max(r.y, full.y);
+		const x1 = Math.min(r.x + r.width, full.x + full.width);
+		const y1 = Math.min(r.y + r.height, full.y + full.height);
+		const z = Math.min(MAX_ZOOM, full.width / (x1 - x0), full.height / (y1 - y0));
+		return z > 1 ? { zoom: z, center: [(x0 + x1) / 2, (y0 + y1) / 2] as Position } : null;
+	});
+
+	/** 放大到「只看有人的地方」：這個畫面本來就包住大家走過的地方，不跟著「我」。 */
+	function fitPeople(fit: ZoomView) {
+		setZoom(fit.zoom, undefined, [viewCenter[0] - fit.center[0], viewCenter[1] - fit.center[1]]);
+		fitted = true;
+	}
+
+	// ---------- 放大後播放，畫面跟著「我」（只能看的場地） ----------
+	/** 「我」離畫面邊緣不到畫面寬（高）的這麼多，畫面才跟過去：不必每一拍都把他放正中間。 */
+	const FOLLOW_EDGE = 0.2;
+	/** 標的「我」（只標一個人才算）。 */
+	const followed = $derived(viewOnly && follow && playing && zoom > 1 && marked.length === 1 ? positions[marked[0]] : undefined);
+	$effect(() => {
+		const p = followed;
+		if (p) untrack(() => keepInView(p));
+	});
+
+	/**
+	 * 「我」快走出畫面：畫面挪剛好讓他回到離邊緣 FOLLOW_EDGE 的地方。每一格播放都挪一點點，看起來是順的；
+	 * 每次位置一換就挪好，不靠動畫，下一格之前「我」一定在畫面裡。
+	 */
+	function keepInView([px, py]: Position) {
+		const { x, y, width: w, height: h } = view;
+		/** 超出離邊緣 FOLLOW_EDGE 那條線多少（公尺，往小的那邊是負的；在線裡面是 0）。 */
+		const pastEdge = (p: number, lo: number, size: number) =>
+			Math.min(p - (lo + size * FOLLOW_EDGE), 0) + Math.max(p - (lo + size * (1 - FOLLOW_EDGE)), 0);
+		const [dx, dy] = [pastEdge(px, x, w), pastEdge(py, y, h)];
+		if (dx || dy) setZoom(zoom, undefined, [-dx, -dy]);
+	}
+
 	// ---------- ✋ 平移：放大後拖空白處移動畫面（不框選）。按 ✋ 切換，或按住 H 暫時用。 ----------
 	/** ✋ 按下去了（縮回整個場地就放掉）。 */
 	let handTool = $state(false);
@@ -414,6 +484,8 @@
 
 	/** 拖著空白處：畫面跟著指標移（跟兩指拖一樣，指到的那一點留在指標下面）。 */
 	function panTo(e: PointerEvent) {
+		// 真的拖了才不再跟著「我」：點一下看是誰時手抖幾 px 不算。
+		if (!press || !still(e, press.client)) movedByHand = true;
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [(e.clientX - pan![0]) * perPx, (e.clientY - pan![1]) * perPx]);
 		pan = [e.clientX, e.clientY];
@@ -429,8 +501,14 @@
 	// ---------- 兩根手指：捏合放大縮小、一起拖移動畫面（iPad）。只有一根時照舊點人、拖人、框選。 ----------
 	/** 按在場上的每根手指（pointerId → 螢幕座標）。 */
 	const fingers = new Map<number, [number, number]>();
-	/** 兩指操作中；放開到一根也不接著拖人，要全部放開。 */
-	let pinching = false;
+	/** 兩指按下時放大幾倍：從整個場地捏，放大了就是又放大一次（endPinch）。 */
+	let pinchFrom = 1;
+	/** 兩指距離：按下時、最後一次移動後。endPinch 用兩個相除分張開、一起拖：看手指本身，畫面中途卡在整個場地或最大時照算。 */
+	let pinchSpan = [0, 0];
+	/** 兩指按下後畫面動過嗎：沒動過就放開，是放上去而已、或放不大也移不動，照原樣（拖走再拖回原處也算動過）。 */
+	let pinchMoved = false;
+	/** 兩根手指放開時，兩指距離張開不到按下時的這麼多倍，算只是移動畫面（手指一起拖，兩指距離總會差一點）。 */
+	const PINCH_ZOOMED = 1.1;
 
 	function midAndSpan(): { mid: [number, number]; span: number } {
 		const [[ax, ay], [bx, by]] = [...fingers.values()];
@@ -442,18 +520,36 @@
 		const before = midAndSpan();
 		fingers.set(e.pointerId, [e.clientX, e.clientY]);
 		const after = midAndSpan();
-		if (before.span === 0) return;
+		// 手指沒動（送了位置一樣的移動）：不重算，免得 1.2 × 109 ÷ 109 這種小數誤差也算動過畫面。
+		if (before.span === 0 || (after.span === before.span && after.mid[0] === before.mid[0] && after.mid[1] === before.mid[1])) return;
+		pinchSpan[1] = after.span;
 		const anchor = toMeters({ clientX: before.mid[0], clientY: before.mid[1] }, svg);
 		const next = clamp((zoom * after.span) / before.span, 1, MAX_ZOOM);
 		// 螢幕 1 px 是幾公尺（縮放後）。
 		const [x1] = toMeters({ clientX: before.mid[0] + 1, clientY: before.mid[1] }, svg);
 		const perPx = ((x1 - anchor[0]) * zoom) / next;
+		const [z0, [cx, cy]] = [zoom, viewCenter];
 		setZoom(next, anchor, [(after.mid[0] - before.mid[0]) * perPx, (after.mid[1] - before.mid[1]) * perPx]);
+		if (zoom !== z0 || viewCenter[0] !== cx || viewCenter[1] !== cy) pinchMoved = true;
 	}
 
 	function liftFinger(e: PointerEvent) {
 		fingers.delete(e.pointerId);
-		if (fingers.size === 0) pinching = false;
+		if (fingers.size === 0 && pinching) {
+			pinching = false;
+			endPinch();
+		}
+	}
+
+	/**
+	 * 兩根手指都放開：從整個場地放大、或兩指張開了，是又放大一次（在「只看有人的地方」裡就開始跟）；
+	 * 只移動畫面、縮小，算自己移動過畫面。停在整個場地：這次放大的事都清掉。畫面沒動過：照原樣。
+	 */
+	function endPinch() {
+		if (zoom === 1) movedByHand = fitted = false;
+		if (!pinchMoved || zoom === 1) return;
+		if (pinchFrom === 1 || pinchSpan[1] / pinchSpan[0] >= PINCH_ZOOMED) fitted = false;
+		else movedByHand = true;
 	}
 
 	/** 螢幕 1 px 是幾公尺（現在的倍數）。 */
@@ -482,6 +578,7 @@
 		}
 		if (zoom <= 1) return;
 		e.preventDefault();
+		movedByHand = true;
 		const [px, py] = e.shiftKey && !dx ? [dy, 0] : [dx, dy];
 		const perPx = metersPerPx(e);
 		setZoom(zoom, undefined, [-px * perPx, -py * perPx]);
@@ -583,6 +680,30 @@
 		return false;
 	}
 
+	/** 上一次指標放開的時間：緊接著的 click 是瀏覽器補的（clickDot），按的人在指標事件裡已經處理過了。 */
+	let pointerUpAt = -Infinity;
+	/** 指標放開後這麼久（毫秒）以內的 click 算是它補的。 */
+	const CLICK_AFTER_UP_MS = 500;
+
+	/**
+	 * 在場上 click：讀螢幕軟體（例：VoiceOver）按人只送 click、沒有指標事件，跟 Enter 一樣選他。
+	 * 手指、滑鼠按完瀏覽器也補一個 click，那個不再算一次。
+	 */
+	function clickDot(e: MouseEvent) {
+		const fromPointer = e.timeStamp - pointerUpAt < CLICK_AFTER_UP_MS;
+		// 補的 click 只有一個：用掉了，緊接著讀螢幕軟體按別人照樣算
+		pointerUpAt = -Infinity;
+		const id = (e.target as Element).closest?.('[data-member-id]')?.getAttribute('data-member-id');
+		if (fromPointer || !id || !pickable) return;
+		pick(id, e.shiftKey);
+	}
+
+	/** 鍵盤、讀螢幕軟體選人：跟手指點一下一樣（手機的檢視畫面告訴外面點到誰）。 */
+	function pick(id: string, shift: boolean) {
+		if (session) session.pickMember(id, shift);
+		else ontap?.(id);
+	}
+
 	function down(e: PointerEvent) {
 		// Mac 的 Control＋點是右鍵：不選人、不拖（交給 contextMenu）
 		if (e.button !== 0 || (e.ctrlKey && e.pointerType === 'mouse')) return;
@@ -590,7 +711,8 @@
 		if (e.pointerType === 'touch' && (controls || look)) {
 			fingers.set(e.pointerId, [e.clientX, e.clientY]);
 			if (fingers.size >= 2 || pinching) {
-				// 第二根手指：不拖人、不框選，改成捏合。
+				// 第二根手指：不拖人、不框選，改成捏合。捏的時候畫面不跟著「我」跑，放開再看（endPinch）。
+				if (!pinching) [pinchFrom, pinchSpan, pinchMoved] = [zoom, Array(2).fill(midAndSpan().span), false];
 				pinching = true;
 				drag = null;
 				box = null;
@@ -743,15 +865,16 @@
 	 * 他在選取裡、選了好幾個人時整組一起移。不往外傳，免得頁面把方向鍵當移播放頭。
 	 * 空白鍵往外傳：焦點在人身上時，空白鍵跟頁面其他地方一樣是播放／暫停。
 	 * 檢視模式不能移人：方向鍵也往外傳，跟頁面其他地方一樣移播放頭。
+	 * 手機的檢視畫面（沒有編輯器）：只有 Enter，跟手指點一下一樣。
 	 */
 	function dotKey(e: KeyboardEvent, id: string) {
-		if (!session) return;
-		if (e.key === 'Enter') {
+		if (e.key === 'Enter' && pickable) {
 			e.preventDefault();
 			e.stopPropagation();
-			session.pickMember(id, e.shiftKey);
+			pick(id, e.shiftKey);
 			return;
 		}
+		if (!session) return;
 		if (!session.editable) return;
 		const dir = ARROWS[e.key];
 		if (!dir || e.ctrlKey || e.metaKey || e.altKey || !positions[id]) return;
@@ -855,7 +978,7 @@
 		<div class="rail-fade" aria-hidden="true" hidden={!rail || !railMore}></div>
 	{/if}
 	<div class="stage" class:band {@attach watchStage}>
-	<!-- 能點人時是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
+	<!-- 能點人時（編輯頁、手機的檢視畫面）是 group：role=img 裡面的東西螢幕報讀器當成圖的一部分，讀不到一個一個的隊員。只看的（八拍表）照舊是圖。 -->
 	<svg
 		bind:this={svg}
 		class="field"
@@ -864,12 +987,16 @@
 		class:panning={!!pan}
 		viewBox="{view.x} {view.y} {view.width} {view.height}"
 		preserveAspectRatio="xMidYMid meet"
-		role={session ? 'group' : 'img'}
+		role={pickable ? 'group' : 'img'}
 		aria-label={t.field_view_surface()}
 		{onwheel}
 		onpointerdown={down}
+		onclick={clickDot}
 		onpointermove={move}
-		onpointerup={up}
+		onpointerup={(e) => {
+			pointerUpAt = e.timeStamp;
+			up(e);
+		}}
 		oncontextmenu={contextMenu}
 		onpointercancel={(e) => {
 			liftFinger(e);
@@ -928,20 +1055,20 @@
 				data-member-id={m.id}
 				data-keep-visible
 				role="button"
-				tabindex={session ? 0 : undefined}
-				aria-label={session ? whereText(m, p) : m.name}
-				aria-pressed={session ? sel : undefined}
+				tabindex={pickable ? 0 : undefined}
+				aria-label={pickable ? whereText(m, p) : m.name}
+				aria-pressed={pickable ? sel : undefined}
 				onkeydown={(e) => dotKey(e, m.id)}
 				transform="translate({p[0]},{p[1]})"
 			>
-				<title>{session ? whereText(m, p) : m.name}</title>
+				<title>{pickable ? whereText(m, p) : m.name}</title>
 				<g transform="scale({dotScale})">
 					{#if pill}
-						{#if session}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
+						{#if pickable}<rect class="focus-ring" x={-pill / 2 - 0.24} y="-0.54" width={pill + 0.48} height="1.08" rx="0.54" />{/if}
 						{#if sel}<rect class="ring" x={-pill / 2 - 0.12} y="-0.42" width={pill + 0.24} height="0.84" rx="0.42" />{/if}
 						<rect class={m.globalRole} x={-pill / 2} y={-DOT_R} width={pill} height={DOT_R * 2} rx={DOT_R} />
 					{:else}
-						{#if session}<circle class="focus-ring" r="0.54" />{/if}
+						{#if pickable}<circle class="focus-ring" r="0.54" />{/if}
 						{#if sel}<circle class="ring" r="0.42" />{/if}
 						<circle class={m.globalRole} r={DOT_R} />
 					{/if}
@@ -982,8 +1109,15 @@
 	{#if readout}<div class="readout" data-keep-visible title={readout}>{readout}</div>{/if}
 	{#if picked}<div class="picked" data-keep-visible role="note" aria-label={t.field_view_picked()}>{picked}</div>{/if}
 	<!-- 只能看、沒有左欄的放大縮小（手機的檢視畫面、檢視模式）：放大了，右下角一顆回整個場地 -->
-	{#if viewOnly && zoom > 1 && !(controls && rail)}
-		<button type="button" class="fit" onclick={() => setZoom(1)}><Icon name="fit" />{t.field_view_fit()}</button>
+	{#if viewOnly && (zoom > 1 || peopleFit) && !(controls && rail)}
+		<!-- 放大了是「整個場地」，沒放大時同一顆是「只看有人的地方」：同一個按鈕，用鍵盤按了焦點還在上面 -->
+		<button
+			type="button"
+			class:fit={zoom > 1}
+			class:people={zoom === 1}
+			onclick={() => (zoom > 1 || !peopleFit ? setZoom(1) : fitPeople(peopleFit))}
+			>{#if zoom > 1}<Icon name="fit" />{t.field_view_fit()}{:else}{t.field_view_people()}{/if}</button
+		>
 	{/if}
 	{#if session?.editable}
 		<SelectionTools {zoom} dragging={!!drag?.cur} {menu} onclosemenu={() => (menu = null)} />
@@ -1443,7 +1577,8 @@
 		pointer-events: none;
 	}
 	/* 只能看時放大了：右下角的「整個場地」（左下角是站位名稱、選到的人，中間是「正面／裁判」）。白底的膠囊，手指至少 40px 高 */
-	.fit {
+	.fit,
+	.people {
 		position: absolute;
 		right: 4px;
 		bottom: 4px;
@@ -1452,8 +1587,14 @@
 		font-weight: 600;
 		box-shadow: 0 2px 8px rgba(22, 33, 58, 0.15);
 	}
+	/* 沒放大時同一顆是「只看有人的地方」：字比較多，不畫圖示、字小一點，320px 的手機也不蓋到中間的「正面／裁判」 */
+	.people {
+		padding: 4px 6px;
+		font-size: 12px;
+	}
 	@media (pointer: coarse) {
-		.fit {
+		.fit,
+		.people {
 			min-height: 40px;
 		}
 	}

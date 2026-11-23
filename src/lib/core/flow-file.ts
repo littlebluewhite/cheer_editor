@@ -7,6 +7,7 @@ import { bookmarkSeconds } from './bookmarks';
 import { CUE_KINDS, cueProblem } from './cues';
 import { newId } from './ids';
 import type { Flow } from './flow';
+import { sortFormations } from './formation';
 import { GENDERS, GLOBAL_ROLES } from './members';
 import { settle } from './settle';
 import { said, type Said, type Why } from './why';
@@ -186,8 +187,9 @@ export type ReadFlowFileResult =
 	/**
 	 * missingSegmentIds：音樂檔不在 zip 裡的音樂段（照開，畫面標紅）。
 	 * droppedBookmarks：放不下、開檔時拿掉的書籤名字（手改過的檔才會有，畫面說出來）。
+	 * sortedFormations：站位沒照時間排、開檔時排好了（手改過的檔才會有，畫面說出來）。
 	 */
-	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[]; droppedBookmarks: string[] }
+	| { kind: 'ok'; flow: Flow; audio: AudioBytes; missingSegmentIds: string[]; droppedBookmarks: string[]; sortedFormations: boolean }
 	/** 打不開：message 是給教練看的原因，多帶 why（見 why.ts）。 */
 	| ({ kind: 'error' } & Said);
 
@@ -246,10 +248,11 @@ export function readFlowFile(
 	}
 	const checked = checkDocument(doc, upgrades, true);
 	if (checked.kind === 'error') return checked;
-	const { flow, dropped } = checked;
+	const { flow, dropped, sorted } = checked;
 	const audio: AudioBytes = {};
 	for (const ref of flow.audio) if (files[folder + ref.file]) audio[ref.id] = files[folder + ref.file];
-	return { kind: 'ok', flow, audio, missingSegmentIds: segmentsMissingAudio(flow, Object.keys(audio)), droppedBookmarks: dropped };
+	const missingSegmentIds = segmentsMissingAudio(flow, Object.keys(audio));
+	return { kind: 'ok', flow, audio, missingSegmentIds, droppedBookmarks: dropped, sortedFormations: sorted };
 }
 
 export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | ({ kind: 'error' } & Said);
@@ -257,6 +260,7 @@ export type CheckFlowDocumentResult = { kind: 'ok'; flow: Flow } | ({ kind: 'err
 /**
  * 檢查一整支流程：flow.json 的內容（JSON.parse 過的）→ 現在這一版的流程。讀流程檔和傳上雲端（伺服器）共用。
  * 舊版一步一步升級；比編輯器新的不收；型別、參照、拍點、成功率設定不對算壞掉；段太長寫出上限（見 segmentLengthProblem）。
+ * 站位沒照時間排的排好（見 sortFormations，ADR 0020）。
  * upgrades 只有測試會換。
  */
 export function checkFlowDocument(
@@ -270,12 +274,13 @@ export function checkFlowDocument(
 /**
  * checkFlowDocument；fix：開檔（readFlowFile）時先修手改過的書籤（見 fixBookmarks），dropped 是拿掉的書籤名字。
  * 傳上雲端不修，照樣擋：雲端的流程都是編輯器開過、改過的，不會有這種書籤。
+ * 站位兩邊都排（只排順序，不刪、不搬），sorted：排過了。
  */
 function checkDocument(
 	doc: unknown,
 	upgrades: Record<number, Upgrade>,
 	fix: boolean
-): { kind: 'ok'; flow: Flow; dropped: string[] } | ({ kind: 'error' } & Said) {
+): { kind: 'ok'; flow: Flow; dropped: string[]; sorted: boolean } | ({ kind: 'error' } & Said) {
 	if (!isDocument(doc)) return { kind: 'error', ...BROKEN };
 	if (doc.formatVersion > FORMAT_VERSION) {
 		return { kind: 'error', ...said({ code: 'flow_file_newer' }) };
@@ -290,7 +295,8 @@ function checkDocument(
 	if (!isFlow(flow)) return { kind: 'error', ...BROKEN };
 	const tooLong = segmentLengthProblem(flow);
 	if (tooLong) return { kind: 'error', ...said(tooLong) };
-	return { kind: 'ok', flow, dropped };
+	const sorted = sortFormations(flow);
+	return { kind: 'ok', flow: sorted, dropped, sorted: sorted !== flow };
 }
 
 /**

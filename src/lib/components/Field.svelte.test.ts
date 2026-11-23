@@ -653,7 +653,8 @@ describe('放大場地來看（手機的檢視畫面：沒有按鈕、不裁）'
 	function setup(props: Record<string, unknown> = {}) {
 		// 手機的檢視畫面一定給 ontap（點到誰）
 		render(Field, { field: { strips: 9, layout: 'vertical' }, members, positions: { m1: [0, 0], m2: [3, 0] }, controls: false, toMeters, ontap: () => {}, ...props });
-		const svg = screen.getByRole('img', { name: '場地' }) as unknown as SVGSVGElement;
+		// 給了 ontap 是點得到人的 group，八拍表的小站位圖（沒給 ontap 或裁切）是 img：用名字找，兩種都找得到
+		const svg = screen.getByLabelText('場地') as unknown as SVGSVGElement;
 		const viewBox = () => svg.getAttribute('viewBox')!.split(' ').map(Number);
 		return { svg, viewBox };
 	}

@@ -27,7 +27,7 @@ export {
 } from './flow-file';
 export type { AudioBytes, CheckFlowDocumentResult, FlowDocument, ReadFlowFileResult, Upgrade } from './flow-file';
 
-export { flowProblem } from './flow-check';
+export { flowProblem, problemKeys } from './flow-check';
 
 export {
 	GENDERS,
@@ -136,7 +136,7 @@ export type { DailyTable, DetailDay, Period, RateCounts, RateFilter, RateTable, 
 export { actionEights, beatSpanWhy, phaseRows } from './beat-range';
 export type { ActionEight, EightPiece } from './beat-range';
 
-export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, teamWho } from './eight-count';
+export { eightCountRows, eightCountView, formationNowWhy, memberNowWhy, nearbyEights, nearestEightStart, teamWho } from './eight-count';
 export type {
 	EightCountAction,
 	EightCountCue,

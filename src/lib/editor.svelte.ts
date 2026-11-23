@@ -13,7 +13,7 @@ import { ActionDraft } from '#lib/action-draft.svelte.js';
 import { decodeAudio, type DecodedAudio } from '#lib/audio/decode.js';
 import { createWebAudioEngine, type AudioEngine } from '#lib/audio/engine.js';
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
-import { browserFilePicker, createBrowserSaver, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
+import { browserFilePicker, createBrowserSaver, downloadFile, saveVideo, type FileSaver, type PickedFile, type SaveOutcome } from '#lib/file/save.js';
 import { EditorSession, setEditorSession, type UpdateReason } from '#lib/editor-session.svelte.js';
 import { FlowFile } from '#lib/flow-file.svelte.js';
 import { Home } from '#lib/home.svelte.js';
@@ -32,6 +32,8 @@ export interface EditorAdapters {
 	createEngine: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
 	/** 存檔薄層，一支流程一個（記得存到哪個檔）。 */
 	createSaver: () => FileSaver;
+	/** 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載。 */
+	download: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome>;
 	/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge）；null 是瀏覽器不能（照舊用選檔欄位）。 */
 	pickFlowFile: (() => Promise<PickedFile | null>) | null;
 	/** 解碼音樂檔。 */
@@ -60,6 +62,7 @@ export function browserAdapters(): EditorAdapters {
 	return {
 		createEngine: createWebAudioEngine,
 		createSaver: () => createBrowserSaver(),
+		download: downloadFile,
 		pickFlowFile: browserFilePicker(),
 		decode: decodeAudio,
 		draftStore: createIndexedDbDraftStore(),

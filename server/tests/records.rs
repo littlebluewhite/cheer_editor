@@ -295,6 +295,25 @@ async fn a_recording_is_saved_with_who_recorded_it_and_others_see_it_right_away(
 }
 
 #[sqlx::test]
+async fn a_resend_returns_only_the_resent_records(db: sqlx::PgPool) {
+    let s = Server::new(db).await;
+    let wang = s.user("wang@example.com", "王教練").await;
+    let id = s.sample(&wang, &[]).await;
+    let (mut phone, _) = s.join(&wang, &id).await;
+    let one = drill("tresend111110", SQUAD_1, json!({ LOAD: "✓" }));
+    let other = drill("tresend222220", SQUAD_2, json!({ LOAD: "✗" }));
+    let first = record(&mut phone, json!([one, other])).await;
+
+    // 只重送第一筆：回存著的那一筆，別的不回。
+    let (mut again, _) = s.join(&wang, &id).await;
+    let second = record(&mut again, json!([one])).await;
+
+    assert_eq!(second["saved"], json!([first["saved"][0]]));
+    assert_eq!(second["saved"][0]["attempt"]["id"], "tresend111110");
+    assert_eq!(second["dropped"], json!([]));
+}
+
+#[sqlx::test]
 async fn a_resend_after_being_made_a_viewer_still_returns_the_stored_record(db: sqlx::PgPool) {
     let s = Server::new(db).await;
     let wang = s.user("wang@example.com", "王教練").await;

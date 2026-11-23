@@ -4,14 +4,17 @@ import { describe, expect, it } from 'vitest';
 import {
 	addBookmark,
 	addMembers,
+	addSegment,
 	deleteBookmark,
 	deleteAction,
 	deleteFormation,
 	deleteMember,
 	deletePhase,
+	insertBeats,
 	renameFlow,
 	setPositions,
 	takeRecords,
+	updateSegment,
 	type Flow
 } from './index';
 import { joinUndo, runUndo, undoChanges, undone } from './cloud-undo';
@@ -86,7 +89,7 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.keys).toEqual(['name']);
 	});
 
-	it('匯入的舊檔站位沒照時間排（0、16、8、16 拍）：復原改名照樣放得回去，不重排站位', () => {
+	it('雲端存著沒照時間排的站位（0、16、8、16 拍）：復原改名照收，站位排好，同一拍的兩張照留（ADR 0020）', () => {
 		const sample = ratedSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -102,10 +105,10 @@ describe('runUndo（伺服器跑復原）', () => {
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
 		expect(r.flow.name).toBe(start.name);
-		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'old3']);
 	});
 
-	it('匯入的舊檔站位沒照時間排（0、16、8、32 拍）：刪 32、別人加了 24，復原把 32 放在 24 後面', () => {
+	it('匯入的舊檔站位沒照時間排（0、16、8、32 拍）：刪 32、別人加了 24，復原：收了，站位照時間排（0、8、16、24、32）', () => {
 		const sample = ratedSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -124,10 +127,11 @@ describe('runUndo（伺服器跑復原）', () => {
 		const r = runUndo(server.flow, server.records, change);
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
-		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old1', 'old2', 'new', 'old3']);
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'new', 'old3']);
 	});
 
-	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原，放回原來的位置，不挪到另一個 24 旁邊被擋', () => {
+	// 同一拍兩張是舊檔的毛病，刪一張剛好治好：那一步治好的可以帶回來（ADR 0020 決定 1，#343）；沒說治好了什麼照樣擋下
+	it('匯入的舊檔（0、16、24、8、24 拍）：刪第一個 24 馬上復原，排好之後兩張 24 同一拍：那一步治好了同一拍就收，沒說就擋下', () => {
 		const sample = ratedSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -139,13 +143,38 @@ describe('runUndo（伺服器跑復原）', () => {
 		};
 		const gone = flowOf(deleteFormation(start, 'old2'));
 		const server = takeRecords(gone);
-		const r = runUndo(server.flow, server.records, undoChanges(start, gone).undo);
+		const { undo } = undoChanges(start, gone);
+		const r = runUndo(server.flow, server.records, undo, ['formationBeat:old2:old4']);
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
-		expect(r.flow.formations.map((f) => f.id)).toEqual(start.formations.map((f) => f.id));
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old3', 'old1', 'old2', 'old4']);
+		expect(r.held).toEqual(['formationBeat:old2:old4']);
+		expect(r.cured).toEqual(['formationOrder']);
+		expect(runUndo(server.flow, server.records, undo)).toEqual({
+			kind: 'blocked',
+			message: '站位 5 和站位 4 在同一拍',
+			why: { code: 'flow_check_formation_same_beat', n: 5, other: 4 }
+		});
 	});
 
-	it('匯入的舊檔（0、8、16、32、24 拍）：刪 16、別人把 8 挪到 20，復原把 16 放在 20 前面，不被擋', () => {
+	// 同一拍的鍵照那幾張的 id：插拍讓那一拍變了，還是同一個毛病
+	it('同一拍兩張（16、16），前面插 8 拍（變 24、24），復原：收了，回到 16、16', () => {
+		const sample = libSample();
+		const pos = sample.formations[0].pos;
+		const start: Flow = {
+			...sample,
+			formations: [sample.formations[0], ...['a', 'b'].map((id) => ({ id, segmentId: 's1', at: 16, pos }))]
+		};
+		const later = flowOf(insertBeats(start, { segmentId: 's1', at: 8 }, 8));
+		expect(later.formations.map((f) => f.at)).toEqual([0, 24, 24]);
+		const server = takeRecords(later);
+		const r = runUndo(server.flow, server.records, undoChanges(start, later).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => [f.id, f.at])).toEqual([[start.formations[0].id, 0], ['a', 16], ['b', 16]]);
+	});
+
+	it('匯入的舊檔（0、8、16、32、24 拍）：刪 16、別人把 8 挪到 20，復原：收了，站位照時間排（0、16、20、24、32）', () => {
 		const sample = ratedSample();
 		const pos = sample.formations[0].pos;
 		const start: Flow = {
@@ -161,7 +190,24 @@ describe('runUndo（伺服器跑復原）', () => {
 		const r = runUndo(server.flow, server.records, undoChanges(start, gone).undo);
 		expect(r.kind).toBe('ok');
 		if (r.kind !== 'ok') return;
-		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'old3', 'old4']);
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'old2', 'old1', 'old4', 'old3']);
+	});
+
+	it('#290 一次放回兩張（s1@0、s2@16、s1@32、s1@40、s2@8）：把 s1 縮短拿掉 s1@32、s1@40，復原：收了，站位照時間排', () => {
+		const two = flowOf(addSegment(libSample(), 'music'));
+		const pos = two.formations[0].pos;
+		const at = (id: string, segmentId: string, at: number) => ({ id, segmentId, at, pos });
+		const start: Flow = {
+			...two,
+			formations: [two.formations[0], at('b16', 's2', 16), at('a32', 's1', 32), at('a40', 's1', 40), at('b8', 's2', 8)]
+		};
+		const shorter = flowOf(updateSegment(start, 's1', { eights: 2 }, { confirmed: true }));
+		expect(shorter.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'b16', 'b8']);
+		const server = takeRecords(shorter);
+		const r = runUndo(server.flow, server.records, undoChanges(start, shorter).undo);
+		expect(r.kind).toBe('ok');
+		if (r.kind !== 'ok') return;
+		expect(r.flow.formations.map((f) => f.id)).toEqual([start.formations[0].id, 'a32', 'a40', 'b8', 'b16']);
 	});
 
 	it('重做刪環節：復原時加回來的記號再清一次，只剩那個環節的記號的那一次整筆清掉（ADR 0007）', () => {

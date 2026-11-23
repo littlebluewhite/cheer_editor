@@ -182,7 +182,7 @@ export class Playback implements SessionPlayback {
 		});
 		if (!this.#playing) {
 			this.#playing = true;
-			this.#nextFrame(this.#frame);
+			this.#loop();
 		}
 	}
 
@@ -496,10 +496,19 @@ export class Playback implements SessionPlayback {
 	 * 每一格畫面：照喇叭正在播的時間移動播放頭；播完就停，開著「停下來回到起播點」就回去
 	 * （重複開著時播放器自己一圈接一圈播，不會停）。
 	 */
+	/** 排下一格（#frame）：已經排了就不再排。一格之內按停再按播，舊的那格還在排著，不然每按一次就多一條。 */
+	#loop() {
+		if (this.#framePending) return;
+		this.#framePending = true;
+		this.#nextFrame(this.#frame);
+	}
+	#framePending = false;
+
 	#frame = () => {
+		this.#framePending = false;
 		if (!this.#playing || !this.#player) return;
 		this.#sec = this.#player.tick(this.#latencyMs);
-		if (this.#player.playing) return this.#nextFrame(this.#frame);
+		if (this.#player.playing) return this.#loop();
 		this.#playing = false;
 		if (this.#returnOnStop) this.#backToStart();
 	};

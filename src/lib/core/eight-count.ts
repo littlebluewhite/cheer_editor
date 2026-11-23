@@ -274,6 +274,18 @@ export function eightCountRows(flow: Flow, memberId: string | null, merge = true
 	return rows;
 }
 
+/**
+ * 手機的進度條放開時停在哪：離 sec 最近的八拍開頭，跟點前後八拍的一列跳到的地方一樣
+ * （口號段整段一列：放在段裡停在段的開頭，或下一段的開頭，看哪個近；流程結尾不算）。流程沒有段是 0。
+ */
+export function nearestEightStart(flow: Flow, sec: number): number {
+	const starts = eightCountRows(flow, null, false).map((r) => r.startSec);
+	// 放開的地方在哪一列（口號段裡、或最後一列後面都算那一列），再看下一列的開頭是不是比較近
+	const i = Math.max(starts.findLastIndex((s) => s <= sec + EPS), 0);
+	const next = starts[i + 1];
+	return next !== undefined && next - sec < sec - starts[i] ? next : (starts[i] ?? 0);
+}
+
 /** 前後八拍：播放頭那個八拍和它前後幾個八拍（見 nearbyEights）。 */
 export interface NearbyEights {
 	/** before ＋ 1 ＋ after 格，播放頭那個八拍在第 before 格；流程開頭、結尾不夠的格是 null。 */
@@ -377,13 +389,14 @@ function memberWho(flow: Flow, action: Action, memberId: string): WhyParam {
  * 哪一張都沒有人是 null（畫整個場地）。
  */
 export function eightCountView(flow: Flow): Rect | null {
-	const placed = flow.formations.flatMap((f) => Object.values(f.pos));
-	if (!placed.length) return null;
-	const xs = placed.map(([x]) => x);
-	const ys = placed.map(([, y]) => y);
-	const x = Math.min(...xs);
-	const y = Math.min(...ys);
-	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+	// 一個一個比，不用 Math.min(...xs)：站位很多時一次傳十幾萬個參數，瀏覽器會出錯
+	let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+	for (const f of flow.formations) {
+		for (const [x, y] of Object.values(f.pos)) {
+			[x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+		}
+	}
+	return x0 === Infinity ? null : { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 /** 八拍表的站位說明（見 EightCountFormation.caption）：「站位 2 金字塔・2-5（2-1 出發）」。 */

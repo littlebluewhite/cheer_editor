@@ -243,6 +243,16 @@ export function formationSec(flow: Flow, f: Formation): number {
 }
 
 /**
+ * 站位照時間排（ADR 0020）：清單的順序就是時間的順序。開頭那張不動，其他照時間排，同一拍的照原來的先後；
+ * 只排順序，不刪、不搬任何一張。本來就排好的回原來的流程（同一個物件）。
+ */
+export function sortFormations(flow: Flow): Flow {
+	const [first, ...rest] = flow.formations;
+	const sorted = [first, ...rest.sort((a, b) => formationSec(flow, a) - formationSec(flow, b))];
+	return sorted.every((f, i) => f === flow.formations[i]) ? flow : { ...flow, formations: sorted };
+}
+
+/**
  * 這一刻（全域秒數）每個人站在哪：兩張站位之間，每人照自己的走位時間走（見 walkTimes），
  * 出發前在前一張的位置，出發到到達之間直線等速（可以跨段），到達後在後一張的位置。
  * 最後一張之後站著不動。

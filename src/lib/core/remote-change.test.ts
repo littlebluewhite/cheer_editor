@@ -100,6 +100,15 @@ describe('別人的改動套上去跟伺服器一樣', () => {
 		expect(got.customRoles.map((r) => r.id)).toEqual(['r1', 'r2', 'r9']);
 	});
 
+	it('我這邊還沒送到的站位，別人把前一張挪到它後面：照時間排（ADR 0020）', () => {
+		const mine = flowOf(insertFormation(sample(), 4.8));
+		const added = mine.formations.find((f) => f.id !== 'f1' && f.id !== 'f2')!;
+		expect(mine.formations.map((f) => f.at)).toEqual([0, 16, 24]);
+		const after: Flow = { ...sample(), formations: sample().formations.map((f) => (f.id === 'f2' ? { ...f, at: 40 } : f)) };
+		const got = applyRemoteChange(mine, overTheWire(remoteChange(sample(), after)));
+		expect(got.formations.map((f) => f.id)).toEqual(['f1', added.id, 'f2']);
+	});
+
 	it('別人沒碰的東西保持我這邊的樣子', () => {
 		const mine = flowOf(setPositions(sample(), 'f1', { m2: [2, 2] }));
 		const after = flowOf(setPositions(sample(), 'f2', { m1: [1, 1] }));

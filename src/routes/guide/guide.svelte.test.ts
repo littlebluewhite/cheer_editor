@@ -143,6 +143,12 @@ describe('使用說明', () => {
 		for (const words of ['很快點兩下', '放大場地', '「整個場地」', '圓點不跟著變大', '點他一下', '別人畫淡', '「選單」的「回首頁」', '「選單」（左上角三條線）的「八拍表」']) {
 			expect(text, words).toContain(words);
 		}
+		// 選了「我」再點別人：跟畫面一樣，兩個人的走位線都畫（#329）
+		expect(text).not.toContain('只畫你的走位線');
+		expect(text).toContain('再點別人，也畫他的走位線');
+		// 只看有人的地方（#333）：範圍不變、不跟著「我」
+		expect(text).toContain('「只看有人的地方」');
+		expect(text).toContain('播放時範圍不變，畫面不跟著你');
 	});
 
 	it('手機的上方列、選單、播放區寫的是一排的樣子：按鈕收在「選單」和「⋯」裡', () => {
@@ -154,6 +160,18 @@ describe('使用說明', () => {
 		expect(row('選單')).toContain('「開啟流程檔」「回首頁」「存檔」、「八拍表」、「使用說明」');
 		expect(document.body.textContent).not.toContain('手機上沒有選單');
 		expect(document.body.textContent).not.toContain('「‹ 八拍」');
+	});
+
+	it('進度條（#330）：手機播放區上面、檢視模式場地下面一條，拖了放開停在最近的八拍開頭，播放中照樣播', () => {
+		render(Guide);
+		const row = (word: string) =>
+			[...document.querySelectorAll('#words tr')].find((tr) => tr.querySelector('td b')?.textContent === word)!.textContent!;
+		expect(row('上方列')).toContain('播放區上面有一條進度條');
+		expect(row('編輯、檢視模式')).toContain('場地下面有一條進度條');
+		const viewers = document.getElementById('viewers')!.textContent!;
+		for (const words of ['按住播放區上面的進度條拖', '放開停在最近的八拍開頭', '口號段整段算一個八拍', '播放中照樣接著播']) {
+			expect(viewers, words).toContain(words);
+		}
 	});
 
 	it('有一節講雲端：登入、雲端流程和本機流程、傳上雲端、下載、分享和權限、分享連結、移交、一起改、一起記成功率、離線副本', () => {
