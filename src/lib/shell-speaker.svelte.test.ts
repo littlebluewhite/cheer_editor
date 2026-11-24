@@ -1,4 +1,4 @@
-// 喇叭和延遲（#388）：App 裡播放頭扣「系統說的延遲＋這個喇叭的延遲校正」，換喇叭馬上換，藍牙斷線就停。
+// 喇叭和延遲（#388）：App 裡播放頭只扣這個喇叭的延遲校正（系統說的延遲不扣，#390），換喇叭馬上換，藍牙斷線就停。
 // 殼用照情境檔演的假殼（bridge-scenarios/current/speaker.json），殼的測試跑同一份。網頁版照舊只扣延遲校正。
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
@@ -50,14 +50,14 @@ const SPEAKER = 'speaker.json';
 const SWITCH = '換喇叭：每個喇叭各記一個延遲校正，換回來還是那個值';
 
 describe('App 裡的喇叭和延遲', () => {
-	it('播放頭扣「系統說的延遲＋延遲校正」：系統說 10、延遲校正 190，跟網頁版延遲校正 200 一樣', async () => {
+	it('播放頭只扣延遲校正（#390）：系統說 10、延遲校正 200，跟網頁版延遲校正 200 一樣', async () => {
 		const base = scenario(SPEAKER, SWITCH);
 		const fake = playScenario({
 			...base,
-			steps: [{ from: 'web', name: 'speakerLatency', body: { id: 'Speaker|built-in', ms: 190 }, reply: null }]
+			steps: [{ from: 'web', name: 'speakerLatency', body: { id: 'Speaker|built-in', ms: 200 }, reply: null }]
 		});
 		const { playback, positionAt } = inApp(fake);
-		playback.setLatency(190);
+		playback.setLatency(200);
 		await flush();
 		playback.play();
 		expect(positionAt(8.4)).toBe('音樂 1 3-5&');
@@ -84,16 +84,16 @@ describe('App 裡的喇叭和延遲', () => {
 		fake.done();
 	});
 
-	it('系統說 2000 毫秒（AirPlay）照扣，不會變 0；延遲校正還是 0', () => {
+	it('系統說的延遲不扣（#390）：內建喇叭系統說 18、延遲校正 0，播放頭不晚', () => {
 		const base = scenario(SPEAKER, SWITCH);
 		const fake = playScenario({
 			...base,
-			boot: { ...base.boot, speaker: { id: 'AirPlay|tv', name: '客廳', systemLatencyMs: 2000, latencyMs: 0 } },
+			boot: { ...base.boot, speaker: { id: 'Speaker|built-in', name: 'iPhone 喇叭', systemLatencyMs: 18, latencyMs: 0 } },
 			steps: []
 		});
 		const { playback, positionAt } = inApp(fake);
 		playback.play();
-		expect(positionAt(10.2)).toBe('音樂 1 3-5&');
+		expect(positionAt(8.21)).toBe('音樂 1 3-5&');
 		expect(playback.latencyMs).toBe(0);
 		fake.done();
 	});
@@ -130,9 +130,9 @@ describe('App 裡的編輯頁', () => {
 		render(Page, editorPage(sample(), { createEngine: createFakeEngine }).props);
 		await fireEvent.click(screen.getByRole('button', { name: '更多播放選項' }));
 		const field = () => screen.getByLabelText('延遲校正（毫秒）') as HTMLInputElement;
-		const hint = () => screen.getByText(/自動扣掉/).textContent!;
+		const hint = () => screen.getByText(/現在接的是/).textContent!;
 		expect(hint()).toBe(
-			'現在接的是「iPhone 喇叭」，這個喇叭的延遲已經自動扣掉了。內建喇叭、有線耳機放 0 就好；藍牙喇叭、耳機：畫面比聲音快就調大，每次加 10。每個喇叭各記一個，存在這台裝置，不進流程檔。'
+			'現在接的是「iPhone 喇叭」。內建喇叭、有線耳機放 0 就好；藍牙喇叭、耳機：畫面比聲音快就調大，每次加 10，調好一次就好。每個喇叭各記一個，存在這台裝置，不進流程檔。'
 		);
 		await fireEvent.change(field(), { target: { value: '100' } });
 		await flush();
