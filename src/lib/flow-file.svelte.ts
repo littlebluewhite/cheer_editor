@@ -281,7 +281,9 @@ export class FlowFile {
 		} catch {
 			picked = null;
 		}
-		if (picked) await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		// 按取消：剛答應丟掉修改只算這次選檔，之後開檔（App 裡從「檔案」交來的，#384）照樣先問
+		if (!picked) this.#openApproved = false;
+		else await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
 	}
 
 	/**

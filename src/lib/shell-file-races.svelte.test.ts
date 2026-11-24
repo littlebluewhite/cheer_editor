@@ -219,3 +219,25 @@ describe('交檔時還有沒存的東西（#384）', () => {
 		disconnect();
 	});
 });
+
+describe('選檔畫面按取消（#384）', () => {
+	it('答應丟掉修改後按取消：之後從「檔案」交來的檔照樣先問', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null, { pickFlowFile: async () => null });
+		const disconnect = editor.file.connect();
+		await settle();
+		editor.file.create(practice());
+		session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		let picking: Promise<void> | undefined;
+		expect(editor.file.mayChoose(() => (picking = editor.file.pick()))).toBe(false);
+		await editor.file.answer('discard');
+		await picking;
+		expect(session.flow?.name).toBe('練習二');
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		expect(session.flow?.name).toBe('練習二');
+		disconnect();
+	});
+});
