@@ -189,14 +189,16 @@ export class FlowFile {
 		// 第一次存（這支流程還沒有存檔薄層）：下載新檔時多說一句這個瀏覽器怎麼存；原本在不在檔案裡（從檔案開的）
 		const first = !this.#saver;
 		const hadFile = this.#onDisk;
-		this.#saver ??= adapters.createSaver();
+		const saver = (this.#saver ??= adapters.createSaver());
+		const draftId = this.#draftId;
 		// 存的這支流程有幾段找不到音樂（存的時候手上的音樂）
 		const missing = music.missingSegmentIds.length;
 		try {
 			const fileName = flowFileName(f.name);
 			const bytes = writeFlowFile(f, music.bytes(f));
-			const outcome = await this.#saver.save(bytes, fileName);
-			if (outcome === 'cancelled') return;
+			const outcome = await saver.save(bytes, fileName);
+			// 存好前換了流程（App 裡存的時候從「檔案」交來別的檔，#385）：存好的是原本那支，不動換上來的這支
+			if (outcome === 'cancelled' || this.#saver !== saver || this.#draftId !== draftId) return;
 			session.markSaved(f);
 			this.#onDisk = true;
 			this.#fileBytes = bytes;
@@ -209,7 +211,7 @@ export class FlowFile {
 			this.#announce();
 			this.#saveDraftLater();
 			// App 裡沒有電腦的 Chrome、Edge 可以換（接了觸控板的 iPad 也是），跟觸控螢幕一樣只說原本的檔沒改（#392）
-			const saved = savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch || host().shell.inApp);
+			const saved = savedText(outcome, saver.fileName ?? fileName, first, hadFile, !!saver.touch || host().shell.inApp);
 			session.notice = missing
 				? joinNotes([saved, (missing === 1 ? m.file_saved_missing_audio_one : m.file_saved_missing_audio)({ count: missing })])
 				: saved;
