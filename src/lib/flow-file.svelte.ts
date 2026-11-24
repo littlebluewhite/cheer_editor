@@ -287,9 +287,15 @@ export class FlowFile {
 	/**
 	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
 	 * saver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。draftId：這支流程的草稿 id（沒給就照檔案算）。
-	 * 另一個分頁正在編這支流程就不開，說原因。
+	 * 另一個分頁正在編這支流程就不開，說原因。blocked：換流程前最後再看一次，回 true 就不開（殼交來的檔，#384）。
 	 */
-	async #openBytes(bytes: Uint8Array, fileName: string | null, saver: FileSaver | null = null, draftId = fileDraftId(bytes)): Promise<void> {
+	async #openBytes(
+		bytes: Uint8Array,
+		fileName: string | null,
+		saver: FileSaver | null = null,
+		draftId = fileDraftId(bytes),
+		blocked?: () => boolean
+	): Promise<void> {
 		const session = this.#editor.session;
 		const r = readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
@@ -313,11 +319,12 @@ export class FlowFile {
 				this.#draftAsk = null;
 				if (choice === 'cancel') return;
 				// 救回修改：存檔照樣蓋回這個檔（#385）
-				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver, draftId);
+				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver, draftId, blocked);
 			}
 		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
 		const music = await this.#editor.readMusic(r.audio);
+		if (blocked?.()) return;
 		const approved = this.#openApproved;
 		this.#openApproved = false;
 		this.#unlessUnsaved(true, approved, () => {
@@ -1015,11 +1022,25 @@ export class FlowFile {
 		if (!handed) return false;
 		const { file, target } = handed;
 		this.#reopening = false;
+		// 拿到檔時、換流程前（解碼音樂要等一下）各看一次：沒按鈕讓欄位失去焦點，打了還沒送出的字先送出（之後照「開別支」先問）；
 		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次
-		const unsent = this.cloud?.unsent ?? 0;
-		if (unsent) this.#editor.session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
+		const blocked = () => {
+			const { session, adapters } = this.#editor;
+			if (session.flow) adapters.pendingInput.flush();
+			const unsent = this.cloud?.unsent ?? 0;
+			if (unsent) session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
+			return unsent > 0;
+		};
 		// 「檔案」點的原檔：存檔蓋回它（#385）
-		else await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, target ? this.#editor.adapters.createSaver(target) : null);
+		const open = async () => {
+			const saver = target ? this.#editor.adapters.createSaver(target) : null;
+			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, blocked);
+		};
+		// 全上表改過格子還開著：跟切頁一樣先問，丟掉才開（按取消就不開）
+		const leave = this.#editor.session.practiceLeave;
+		if (blocked()) return true;
+		if (leave) leave(() => void open());
+		else await open();
 		return true;
 	}
 

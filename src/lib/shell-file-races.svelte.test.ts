@@ -147,3 +147,75 @@ describe('兩個檔一前一後交來（#384）', () => {
 		disconnect();
 	});
 });
+
+describe('交檔時還有沒存的東西（#384）', () => {
+	it('欄位裡打了還沒送出的字：先送出、照「開別支」先問，不悄悄丟掉', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const pendingInput = fakePendingInput();
+		const { editor, session } = testEditor(null, { pendingInput });
+		const disconnect = editor.file.connect();
+		await settle();
+		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		expect(session.unsaved).toBe(false);
+		pendingInput.pending = true;
+		pendingInput.onflush = () => session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		expect(session.flow?.name).toBe('練習二');
+		disconnect();
+	});
+
+	it('全上表改過格子還開著：跟切頁一樣先問，丟掉才開；按取消不開', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null);
+		const disconnect = editor.file.connect();
+		await settle();
+		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		const asked: (() => void)[] = [];
+		session.practiceLeave = (go) => void asked.push(go);
+		const file = { name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) };
+		hand(file);
+		await settle();
+		expect(asked).toHaveLength(1);
+		expect(session.flow?.name).toBe('練習');
+		// 按取消（不叫 go）：不開；再交一次、這次丟掉格子：才開
+		hand(file);
+		await settle();
+		asked[1]();
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		disconnect();
+	});
+
+	it('雲端流程：交來的檔還在解碼時又改了一步（還沒送到）：不換掉，沒送到的步不丟', async () => {
+		const decoding = later<void>();
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const s = await cloudEditor(
+			{},
+			{
+				decode: async () => {
+					await decoding.promise;
+					throw new Error('cannot decode');
+				}
+			}
+		);
+		const disconnect = s.editor.file.connect();
+		await settle();
+		const name = s.session.flow!.name;
+		hand({ name: '練習用.cheer', bytes: writeFlowFile(audioFlow(), { a1: new Uint8Array([7, 7]) }) });
+		await settle();
+		s.state.holdRoom = true;
+		s.session.ask.send({ name: 'renameFlow', args: ['區賽'] });
+		expect(s.editor.file.cloud!.unsent).toBe(1);
+		decoding.resolve();
+		await settle();
+		expect(s.session.flow!.name).toBe('區賽');
+		expect(s.session.flow!.name).not.toBe(name);
+		expect(s.editor.file.cloud!.unsent).toBe(1);
+		disconnect();
+	});
+});
