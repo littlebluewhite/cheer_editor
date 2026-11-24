@@ -109,6 +109,8 @@ export class FlowFile {
 	#announced: string | null = null;
 	/** App 打開時正在回上次那支（#378）：還沒開好、也還沒確定不見了之前，頁面不先畫首頁。殼會存小設定才回（網頁版不回）。 */
 	#reopening = $state(host().shell.can(SETTINGS_FEATURE) && loadLastFlow() !== '');
+	/** 打開時讀草稿、開交來的檔（#384）：還沒做完時殼又交來檔，排在後面開。 */
+	#handing: Promise<unknown> = Promise.resolve();
 
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
@@ -152,13 +154,17 @@ export class FlowFile {
 			}
 		});
 		this.#announce();
-		void this.#checkDraft(reopen);
+		this.#handing = this.#checkDraft(reopen);
 		const stopHearing = host().shell.on('background', () => {
 			this.pageHidden();
 			this.#rememberLast();
 		});
-		// 從「檔案」、分享選單交給開著的 App 的流程檔（#384）：殼說一聲，拿來照開檔的規則打開（有沒存的修改先問）
-		const stopFiles = host().shell.on('fileOpened', () => void this.#openHandedFile());
+		// 從「檔案」、分享選單交給開著的 App 的流程檔（#384）：殼說一聲，拿來照開檔的規則打開（有沒存的修改先問）。
+		// 一個一個開：等打開時回上次那支、前一個交來的檔（可能還在問）開完了才拿，不蓋掉還在問的、也不被慢的蓋過
+		const stopFiles = host().shell.on('fileOpened', () => {
+			const open = () => this.#openHandedFile();
+			this.#handing = this.#handing.then(open, open);
+		});
 		return () => {
 			stopHearing();
 			stopFiles();

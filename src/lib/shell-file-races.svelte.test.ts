@@ -96,3 +96,54 @@ describe('存檔還沒好就換了流程（#385）', () => {
 		disconnect();
 	});
 });
+
+describe('兩個檔一前一後交來（#384）', () => {
+	it('App 打開時第一個檔還在問草稿、又交來第二個：問完都開得了，之後照常存草稿', async () => {
+		const drafts = fakeDraftStore();
+		const a = { name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) };
+		const b = { name: '練習.cheer', bytes: writeFlowFile(practice(), {}) };
+		await changedDraftOf(drafts, a, '全國賽改');
+		const idB = await changedDraftOf(drafts, b, '練習改');
+		const { shell, hand } = handShell(a);
+		fakeHost({ shell, settings: fakeSettings().settings });
+		const { editor, session } = testEditor(null, { draftStore: drafts.store });
+		const disconnect = editor.file.connect();
+		await settle();
+		expect(editor.file.draftAsk).not.toBeNull();
+		hand(b);
+		await settle();
+		for (let i = 0; i < 4 && editor.file.draftAsk; i++) {
+			editor.file.answerDraft('file');
+			await settle();
+		}
+		expect(session.flow?.name).toBe('練習');
+		session.change(flowOf(renameFlow(session.flow!, '練習三')));
+		editor.file.pageHidden();
+		await settle();
+		const r = readFlowFile(drafts.all.get(idB)!.bytes);
+		expect(r.kind === 'ok' && r.flow.name).toBe('練習三');
+		disconnect();
+	});
+
+	it('App 打開時正在回上次那支、還沒開好就交來一個檔：開交來的那個，上次那支不蓋過它', async () => {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(practice(), {}));
+		const slow = later<void>();
+		const store = { ...drafts.store, load: async (id: string) => (id === 'n1' && (await slow.promise), drafts.store.load(id)) };
+		const { shell, hand } = handShell();
+		fakeHost({ shell, settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		const { editor, session } = testEditor(null, { draftStore: store });
+		const disconnect = editor.file.connect();
+		await settle();
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		slow.resolve();
+		await settle();
+		// 回上次那支是救回草稿（還算沒存）：交來的檔照「開別支」先問
+		expect(editor.file.askingToOpen).toBe(true);
+		await editor.file.answer('discard');
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		disconnect();
+	});
+});
