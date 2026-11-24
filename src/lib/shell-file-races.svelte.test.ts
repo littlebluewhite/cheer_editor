@@ -271,3 +271,28 @@ describe('殼讀不到交來的檔（#384）', () => {
 		disconnect();
 	});
 });
+
+describe('電腦上救回草稿後存檔（#385 不改網頁版）', () => {
+	it('Chrome、Edge 選檔打開、選「救回修改」：存檔照舊問存到哪，不蓋回原檔', async () => {
+		const drafts = fakeDraftStore();
+		const file = { name: '全國賽.zip', bytes: writeFlowFile(contest(), {}) };
+		await changedDraftOf(drafts, file, '全國賽改');
+		const picked = fakeSaver();
+		const fresh = fakeSaver();
+		const { editor } = testEditor(null, {
+			draftStore: drafts.store,
+			pickFlowFile: async () => ({ file: new File([file.bytes.slice()], file.name), saver: picked.saver }),
+			createSaver: () => fresh.saver
+		});
+		const disconnect = editor.file.connect();
+		await settle();
+		const picking = editor.file.pick();
+		await settle();
+		editor.file.answerDraft('draft');
+		await picking;
+		await editor.file.save();
+		expect(picked.saves).toHaveLength(0);
+		expect(fresh.saves).toHaveLength(1);
+		disconnect();
+	});
+});

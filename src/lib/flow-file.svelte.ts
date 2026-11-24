@@ -320,8 +320,8 @@ export class FlowFile {
 				});
 				this.#draftAsk = null;
 				if (choice === 'cancel') return;
-				// 救回修改：存檔照樣蓋回這個檔（#385）
-				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver, draftId, blocked);
+				// 救回修改：App 裡存檔照樣蓋回這個檔（殼給的書籤，#385）；電腦上的 Chrome、Edge 照舊第一次存檔問存到哪
+				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver?.remembered ? saver : null, draftId, blocked);
 			}
 		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
