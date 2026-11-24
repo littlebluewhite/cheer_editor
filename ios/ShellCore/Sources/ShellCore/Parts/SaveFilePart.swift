@@ -1,7 +1,7 @@
 // 存檔蓋回原本的檔、「傳給別人」（#385，情境 bridge-scenarios/current/saveFile.json）。
 // - 存檔（saveFlowFile）：網頁給「存到哪」（target：殼給過的書籤，base64）就蓋回那個檔；沒給、書籤找不到檔、寫不進去，就問存到哪
 //   （askWhere：App 叫出系統的存檔畫面，存好回那個檔的網址；按取消 nil），回新的書籤和檔名。按取消回 null。
-//   書籤殼不留：網頁跟草稿一起記（小設定），App 關掉再開照樣交回來。書籤舊了（檔搬過）回新的。
+//   書籤殼不留：網頁跟草稿一起記（小設定），App 關掉再開照樣交回來。蓋回後每次都回新的書籤（整個換上的是新的檔）。
 // - 傳給別人（shareFlowFile）：叫出分享選單送那個檔（.zip），回有沒有送出。button 是按的那顆鈕（iPad 的分享選單從那裡跳出來）。
 // 「檔案」點進來、「開啟流程檔」選的檔，書籤是 OpenFilePart 交檔時一起給的；分享選單給的副本沒有。
 import Foundation
@@ -104,7 +104,8 @@ public final class SaveFilePart: BridgePart {
         if case .object(let o) = body, case .string(let target)? = o["target"],
            let mark = Data(base64Encoded: target), let found = places.find(mark),
            (try? await places.write(bytes, found.url)) != nil {
-            let fresh = found.stale ? places.remember(found.url)?.base64EncodedString() ?? target : target
+            // 蓋回是整個換上新的檔：每次都記一份新的書籤（推論：舊的照路徑還找得回，只是會變舊）
+            let fresh = places.remember(found.url)?.base64EncodedString() ?? target
             return ["target": .string(fresh), "name": .string(found.url.lastPathComponent)]
         }
         guard let url = await askWhere(fileName, bytes) else { return nil }
