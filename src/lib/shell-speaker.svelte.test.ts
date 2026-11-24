@@ -121,7 +121,7 @@ describe('網頁版、還不會 speaker 的舊殼', () => {
 	});
 });
 
-describe('App 裡「⋯」小窗的延遲校正', () => {
+describe('App 裡的編輯頁', () => {
 	it('寫出現在是哪個喇叭、提示講五件事、不寫系統說的毫秒數；換喇叭馬上換名字和數字', async () => {
 		const fake = scenarioShell(SPEAKER, SWITCH);
 		window.__cheerShell = fake.bridge;
@@ -162,5 +162,21 @@ describe('App 裡「⋯」小窗的延遲校正', () => {
 			cleanup();
 			undo?.();
 		}
+	});
+
+	it('編輯頁播放中藍牙斷線：播放鍵變回「播放」', async () => {
+		const fake = scenarioShell(SPEAKER, '藍牙斷線就停');
+		window.__cheerShell = fake.bridge;
+		const undo = useShellIfInApp();
+		onTestFinished(() => undo?.());
+		render(Page, editorPage(sample(), { createEngine: createFakeEngine }).props);
+		await fireEvent.click(screen.getByRole('button', { name: '播放' }));
+		fake.say();
+		await tick();
+		expect(screen.getByRole('button', { name: '暫停' })).toBeTruthy();
+		fake.say();
+		await tick();
+		expect(screen.getByRole('button', { name: '播放' })).toBeTruthy();
+		fake.done();
 	});
 });

@@ -322,7 +322,8 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - **斷線就停**：`routeChangeNotification` 的 reason 是 `oldDeviceUnavailable`、換之前（`previousRoute`）的喇叭是藍牙（A2DP、LE、HFP）或耳機（`Headphones`）時，`speakerChanged` 帶 `stop: true`，網頁停止播放（停在那裡，不回起播點）。AirPlay、一般換喇叭不停。
 - 「⋯」小窗的提示在 App 裡換成 `editor_latency_hint_app`（寫出喇叭的名字，講五件事，不寫系統說的毫秒數）。
 - **開發版（Debug）**多塞 `speakerDebug`，小窗多一行「系統延遲：殼 … ms／網頁 … ms」（網頁讀 `AudioContext.outputLatency`，不是 running 時是 0），給 #390 比。上架版沒有。
-- 只在 Mac 上的測試（ShellCore、Vitest）和模擬器上跑過。**沒驗的**（模擬器沒有藍牙、量不了）：App 行程讀的 `outputLatency` 跟 WebKit 真的播出去的對不對得上、`uid` 斷線再連或重新配對變不變、播放中換喇叭系統說的延遲有沒有跟著換、斷線真的停：都在 #390 真機驗。
+- 測過的只有 Mac 上的測試（ShellCore、Vitest）；模擬器上只有建得起來、管子測試照樣過（沒有專測喇叭的管子測試）。**沒驗的**（模擬器沒有藍牙、量不了）：App 行程收不收得到 `routeChangeNotification`（播放是 WebKit 在做）、App 行程讀的 `outputLatency` 跟 WebKit 真的播出去的對不對得上、`uid` 斷線再連或重新配對變不變、播放中換喇叭系統說的延遲有沒有跟著換、斷線真的停：都在 #390 真機驗。
+- **#390 先量內建喇叭**（推論，沒量）：#387 量到沒扣系統說的延遲時，內建喇叭的畫面已經比聲音晚約 38 ms；扣得越多畫面越晚，現在多扣系統說的延遲（內建喇叭約 10 ms 上下），畫面會晚約 38 ms＋那個數字，可能超過規格的「聲音最多比畫面早 40 ms」，提示的「內建喇叭放 0 就好」也會不對。量了真的超過就回來找網站主人（規格寫要扣，這張票照扣）。
 
 ## 還沒做的（後面的票）
 
