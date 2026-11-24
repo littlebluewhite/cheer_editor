@@ -6,6 +6,8 @@ import { scenarioShell } from '#lib/scenario-shell.js';
 import { createFlow, readFlowFile, writeFlowFile } from '#lib/core';
 import { cloudEditor, fakeDraftStore, fakeHost, fakeOfflineStore, fakeSettings, fakeShell, flush, testEditor } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
+import type { Flow } from '#lib/core';
+import type { EditorAdapters } from '#lib/editor.svelte.js';
 import { localDate } from '#lib/local-date.js';
 
 afterEach(() => {
@@ -208,6 +210,92 @@ describe('回上次那支：改過沒存的照樣算未存', () => {
 	});
 });
 
+// 回上次那支先畫場地，音樂之後才解碼好（#379）：解碼要 0.3–0.6 秒（模擬器），不等它
+describe('回上次那支：音樂還在載入', () => {
+	/** 有一段音樂（song.mp3）的流程。 */
+	function withSong(): Flow {
+		const flow = libSample();
+		flow.audio = [{ id: 'a1', file: 'audio/a1.mp3', name: 'song.mp3' }];
+		flow.segments = flow.segments.map((seg) => (seg.kind === 'music' ? { ...seg, audioId: 'a1' } : seg));
+		return flow;
+	}
+
+	/** 解碼等 finish() 才好（低耗電的 iPhone 很慢）。 */
+	function slowDecode() {
+		const waiting: (() => void)[] = [];
+		const decode = (() => new Promise((ok) => waiting.push(() => ok({ durationSec: 30, peaks: [] })))) as EditorAdapters['decode'];
+		return { decode, finish: () => waiting.splice(0).forEach((go) => go()) };
+	}
+
+	async function reopenWithSong() {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(withSong(), { a1: new Uint8Array([1, 2, 3]) }));
+		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'n1' });
+		fakeHost({ shell: shellThatGoesAway().shell, settings });
+		const slow = slowDecode();
+		const t = testEditor(null, { draftStore: drafts.store, decode: slow.decode });
+		const disconnect = t.editor.file.connect();
+		onTestFinished(disconnect);
+		await flush();
+		await flush();
+		return { ...t, drafts, finish: slow.finish };
+	}
+
+	it('不等音樂解碼好就開好（場地先出來）；音樂載入中，不標「找不到音樂」', async () => {
+		const { editor, session, finish } = await reopenWithSong();
+		expect(editor.file.reopening).toBe(false);
+		expect(session.flow?.name).toBe('測試');
+		expect(editor.music.loading).toBe(true);
+		expect(editor.music.missingSegmentIds).toEqual([]);
+		finish();
+		await flush();
+		expect(editor.music.loading).toBe(false);
+		expect(editor.music.lengths).toEqual({ a1: 30 });
+	});
+
+	it('音樂還在載入：不能播（播放鍵、空白鍵、鎖定畫面、試聽都一樣），載入好了才能播', async () => {
+		const { editor, finish } = await reopenWithSong();
+		editor.playback.play();
+		expect(editor.playback.playing).toBe(false);
+		editor.playback.space(false);
+		expect(editor.playback.playing).toBe(false);
+		editor.playback.preview('s1');
+		expect(editor.playback.previewing).toBe(false);
+		finish();
+		await flush();
+		editor.playback.play();
+		expect(editor.playback.playing).toBe(true);
+	});
+
+	it('音樂解完才知道解不開：那時才說（開好時不說）', async () => {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(withSong(), { a1: new Uint8Array([1, 2, 3]) }));
+		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'n1' });
+		fakeHost({ shell: shellThatGoesAway().shell, settings });
+		let fail = () => {};
+		const decode = (() => new Promise((_, no) => (fail = () => no(new Error('bad'))))) as EditorAdapters['decode'];
+		const { editor, session } = testEditor(null, { draftStore: drafts.store, decode });
+		onTestFinished(editor.file.connect());
+		await flush();
+		await flush();
+		expect(session.flow?.name).toBe('測試');
+		expect(session.notice).toBe('');
+		fail();
+		await flush();
+		expect(editor.music.hasBroken).toBe(true);
+		expect(session.notice).toContain('讀不出來');
+	});
+
+	it('音樂還在載入時存草稿（回首頁）：音樂照樣存進去，不會不見', async () => {
+		const { editor, drafts } = await reopenWithSong();
+		expect(editor.music.loading).toBe(true);
+		await editor.file.leaveToHome();
+		await flush();
+		const r = readFlowFile(drafts.all.get('n1')!.bytes);
+		expect(r.kind === 'ok' && [...(r.audio.a1 ?? [])]).toEqual([1, 2, 3]);
+	});
+});
+
 // 上次那支是雲端流程（#383）：先開這台的離線副本（只能看、能記），連上了自動換成最新的、可以改。
 const LIN = 'lin@example.com';
 const WANG = 'wang@example.com';
@@ -222,10 +310,10 @@ async function openedBefore(cloud: Parameters<typeof cloudEditor>[0] = {}) {
 }
 
 /** 關掉再開 App：上次那支記著 last，新的編輯器用同一個伺服器和離線存放，打開頁面。 */
-function reopenApp(s: Awaited<ReturnType<typeof openedBefore>>, last = 'cloud:c1') {
+function reopenApp(s: Awaited<ReturnType<typeof openedBefore>>, last = 'cloud:c1', adapters: Partial<EditorAdapters> = {}) {
 	const { settings } = fakeSettings({ 'cheer-editor:lastFlow': last });
 	fakeHost({ shell: shellThatGoesAway().shell, settings });
-	const t = testEditor(null, { server: s.server, offline: s.offline.store });
+	const t = testEditor(null, { server: s.server, offline: s.offline.store, ...adapters });
 	const disconnect = t.editor.file.connect();
 	onTestFinished(disconnect);
 	return t;
@@ -285,6 +373,24 @@ describe('上次那支是雲端流程', () => {
 		await settle();
 		expect(editor.file.source.kind).toBe('cloud');
 		expect(editor.file.can(true).edit.ok).toBe(true);
+	});
+
+	it('有離線副本、帶音樂：不等音樂解碼好就開好（#379），音樂照樣留著', async () => {
+		const flow = libSample();
+		flow.audio = [{ id: 'a1', file: 'audio/a1.mp3', name: 'song.mp3' }];
+		const s = await openedBefore({ flow, audio: { a1: new Uint8Array([1, 2, 3]) } });
+		s.state.holdRoom = true;
+		let finish = () => {};
+		const decode = (() => new Promise((ok) => (finish = () => ok({ durationSec: 30, peaks: [] })))) as EditorAdapters['decode'];
+		const { editor, session } = reopenApp(s, 'cloud:c1', { decode });
+		await settle(2);
+		expect(editor.file.reopening).toBe(false);
+		expect(session.flow?.name).toBe(libSample().name);
+		expect(editor.music.loading).toBe(true);
+		expect([...(editor.music.bytes(session.flow!).a1 ?? [])]).toEqual([1, 2, 3]);
+		finish();
+		await flush();
+		expect(editor.music.loading).toBe(false);
 	});
 
 	it('換成最新的時：離線副本裡有的音樂不再下載', async () => {

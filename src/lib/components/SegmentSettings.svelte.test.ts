@@ -288,6 +288,32 @@ describe('段縮短', () => {
 	});
 });
 
+// 回上次那支先畫場地，音樂之後才解碼好（#379）：段設定這時打開
+describe('音樂段設定：音樂還在載入', () => {
+	it('寫載入中（不寫找不到音樂）；不能照音樂長度算、不能點波形放第一拍；載入好了才能', async () => {
+		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		let finish = () => {};
+		const decode = () => new Promise<DecodedAudio>((ok) => (finish = () => ok(loaded(60))));
+		const { editor, session } = testEditor(flow, { decode });
+		const { music, decoded } = editor.musicLater({ a1: new Uint8Array(8) });
+		editor.switchMusic(music);
+		const props = { segmentId: 's1', onclose: () => {}, waveXToSec: (e: MouseEvent) => e.clientX * 0.05 };
+		render(TestSession, { props: { editor, component: SegmentSettings, props } });
+		expect(screen.getByText('歌.mp3（載入中…）')).toBeTruthy();
+		expect(screen.queryByText(/找不到音樂/)).toBeNull();
+		expect((screen.getByRole('button', { name: '照音樂長度算' }) as HTMLButtonElement).disabled).toBe(true);
+		const before = lastSegment(session).firstBeatSec;
+		await fireEvent.click(screen.getByRole('img', { name: '波形' }), { clientX: 28 });
+		expect(lastSegment(session).firstBeatSec).toBe(before);
+
+		finish();
+		await decoded;
+		await fireEvent.click(screen.getByRole('img', { name: '波形' }), { clientX: 28 });
+		expect(lastSegment(session).firstBeatSec).toBeCloseTo(1.4, 9);
+		expect((screen.getByRole('button', { name: '照音樂長度算' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+});
+
 describe('口號段設定', () => {
 	it('長度用秒設，最細 0.1 秒', async () => {
 		const flow = flowOf(addSegment(musicFlow(), 'chant'));

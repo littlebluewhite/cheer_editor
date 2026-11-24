@@ -58,6 +58,7 @@ export class Playback implements SessionPlayback {
 	readonly #nextFrame: NextFrame;
 	readonly #moved: () => void;
 	readonly #selectedAction: () => Action | null;
+	readonly #musicLoading: () => boolean;
 	#player: Player | null = null;
 
 	#at = $state(0);
@@ -82,19 +83,22 @@ export class Playback implements SessionPlayback {
 	 * flow：現在的流程；createEngine：建音訊引擎（第一次播放時才建）。
 	 * moved：播放頭動了要叫的（編輯器 module 接上：動作表單的草稿跟著播放頭）。
 	 * selectedAction：選著的動作（沒有重複範圍時按「重複」，範圍拉成它）。
+	 * musicLoading：音樂還在載入（回上次那支先畫場地，#379）：不能播、不能試聽。
 	 */
 	constructor(
 		flow: () => Flow | null,
 		createEngine: () => AudioEngine,
 		nextFrame: NextFrame,
 		moved: () => void,
-		selectedAction: () => Action | null
+		selectedAction: () => Action | null,
+		musicLoading: () => boolean
 	) {
 		this.#flow = flow;
 		this.#createEngine = createEngine;
 		this.#nextFrame = nextFrame;
 		this.#moved = moved;
 		this.#selectedAction = selectedAction;
+		this.#musicLoading = musicLoading;
 	}
 
 	/** 播放頭（全域秒數）；每次改都叫 moved。 */
@@ -197,6 +201,7 @@ export class Playback implements SessionPlayback {
 	 * 重複開著：只播到 B，接著從 A 一直重複（下一圈先排好，圈和圈之間不停）；播放頭不在範圍裡就從 A 開始。
 	 */
 	play() {
+		if (this.#musicLoading()) return;
 		this.#run();
 		this.#startSec = this.#at;
 	}
@@ -310,7 +315,7 @@ export class Playback implements SessionPlayback {
 	/** 段設定的「▶ 從第一拍聽 2 個八拍」：先停掉正在播的流程；播放頭不動，播完自己停。 */
 	preview(segmentId: string) {
 		const f = this.#flow();
-		if (!f) return;
+		if (!f || this.#musicLoading()) return;
 		this.#stop();
 		this.#getPlayer().start(firstBeatPreview(f, segmentId), { fromSec: 0, metronome: true });
 		this.#previewing = true;

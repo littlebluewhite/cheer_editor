@@ -112,7 +112,8 @@ export class Editor {
 			() => adapters.createEngine((id) => this.music.buffer(id)),
 			adapters.nextFrame,
 			() => follow(),
-			() => this.session.selectedAction
+			() => this.session.selectedAction,
+			() => this.music.loading
 		);
 		this.session = new EditorSession(flow, this.playback, follow);
 		this.#music = $state.raw(this.#newMusic());
@@ -137,6 +138,12 @@ export class Editor {
 		const music = this.#newMusic();
 		await music.load(audio);
 		return music;
+	}
+
+	/** 回上次那支（#379）：跟 readMusic 一樣，只是不等解碼好就交回來（位元組已經收下，解完自己換上長度、波形、聲音）。 */
+	musicLater(audio: AudioBytes): { music: MusicLibrary; decoded: Promise<void> } {
+		const music = this.#newMusic();
+		return { music, decoded: music.load(audio) };
 	}
 
 	/** 換流程：換上這支流程的音樂檔庫（沒給是空的：新建的流程）；舊的還在解碼的選檔不要了。 */

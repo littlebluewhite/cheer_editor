@@ -376,6 +376,7 @@
 					>
 						<b>{whyText(labelWhy(span))}</b>
 						{#if missing}<span class="flag">{m.timeline_missing()}</span>{/if}
+						{#if span.segment.kind === 'music' && editor.music.loadingAudio(span.segment.audioId)}<span class="flag loading">{m.timeline_music_loading()}</span>{/if}
 						<span class="meta">{meta}</span>
 					</button>
 					<button
@@ -827,6 +828,11 @@
 		color: var(--danger, #c8372d);
 		font-weight: 700;
 		font-size: 11px;
+	}
+	/* 音樂還在載入（回上次那支，#379）：不是錯，不用紅字 */
+	.flag.loading {
+		color: var(--ink, #1f2433);
+		font-weight: 400;
 	}
 	.empty,
 	.lanes-empty span {

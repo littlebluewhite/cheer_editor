@@ -73,6 +73,8 @@
 	/** 音樂檔壞了（解不開）：不知道多長，不拿長度 0 去算、去提醒。 */
 	const broken = $derived(!!loadedAudio?.broken);
 	const audio = $derived(broken ? undefined : loadedAudio);
+	/** 音樂檔還在解碼（回上次那支先畫場地，#379）：還不知道多長，不能照音樂長度算、不能點波形放第一拍。 */
+	const audioLoading = $derived(editor.music.loadingAudio(music?.audioId));
 	const audioName = $derived(flow.audio.find((a) => a.id === music?.audioId)?.name);
 	const otherAudio = $derived(flow.audio.filter((a) => a.id !== music?.audioId));
 	const length = $derived(music && musicLength(music));
@@ -233,11 +235,13 @@
 						{m.segment_settings_load_audio()}
 						<input type="file" accept={AUDIO_EXTENSIONS.map((x) => `.${x}`).join(',')} onchange={load} />
 					</label>
-					<span class="audio" class:missing={audioName && !audio}>
+					<span class="audio" class:missing={audioName && !audio && !audioLoading}>
 						{audioName
 							? audio
 								? m.segment_settings_audio_length({ name: audioName, sec: audio.durationSec.toFixed(1) })
-								: broken
+								: audioLoading
+									? m.segment_settings_audio_loading({ name: audioName })
+									: broken
 									? m.segment_settings_audio_broken({ name: audioName, reason: reasonText(said(BROKEN_AUDIO)) })
 									: m.segment_settings_audio_missing({ name: audioName })
 							: m.segment_settings_no_audio()}
@@ -281,10 +285,10 @@
 						/>
 					</label>
 					{#if !readonly}{@render listen()}{/if}
-					{#if audio}
-						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48） -->
-						{@const hide = music.bpm === openedBpm && !firstLoaded}
-						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} onclick={fitToAudio}>{m.segment_settings_refit()}</button>
+					{#if audio || audioLoading}
+						<!-- 改了 BPM（或剛載入音樂）才看得到；沒出現時也佔著位置（藏起來），出現時第一拍、下一排不被推走（N48）。音樂還在載入也先佔著位置 -->
+						{@const hide = (music.bpm === openedBpm && !firstLoaded) || audioLoading}
+						<button type="button" class:unchanged={hide} aria-hidden={hide || undefined} disabled={audioLoading} onclick={fitToAudio}>{m.segment_settings_refit()}</button>
 					{/if}
 				</div>
 				{#if firstLoaded}
@@ -311,7 +315,7 @@
 					aria-label={m.segment_settings_wave()}
 					viewBox={`${wave.startSec} 0 ${wave.lengthSec} 2`}
 					preserveAspectRatio="none"
-					onclick={readonly ? undefined : clickWave}
+					onclick={readonly || audioLoading ? undefined : clickWave}
 				>
 					<rect class="used" x={used.startSec} width={used.endSec - used.startSec} y="0" height="2" />
 					<line class="mid" x1={wave.startSec} x2={wave.startSec + wave.lengthSec} y1="1" y2="1" />
@@ -321,7 +325,7 @@
 					{/each}
 				</svg>
 				<p class="hint">
-					{audio ? m.segment_settings_wave_hint() : m.segment_settings_wave_hint_no_audio()}
+					{audio || audioLoading ? m.segment_settings_wave_hint() : m.segment_settings_wave_hint_no_audio()}
 				</p>
 			</section>
 
@@ -342,7 +346,7 @@
 						/>
 					</label>
 					<span class="hint">{m.segment_settings_max_eights({ max: MAX_EIGHTS })}</span>
-					<button type="button" onclick={fitToAudio}>{m.segment_settings_fit()}</button>
+					<button type="button" disabled={audioLoading} onclick={fitToAudio}>{m.segment_settings_fit()}</button>
 				</div>
 				{#if overrun > 0}
 					{@const then = fitBlocked ? m.segment_settings_fit_blocked({ reason: fitBlocked }) : m.segment_settings_fit_hint()}
