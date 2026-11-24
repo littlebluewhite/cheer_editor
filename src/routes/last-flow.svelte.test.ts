@@ -3,7 +3,8 @@ import { cleanup, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createFlow, writeFlowFile } from '#lib/core';
 import { cloudEditor, editorPage, fakeDraftStore, fakeHost, fakeSettings, fakeShell, flush } from '#lib/test-fakes.js';
-import { flowOf } from '#lib/test-flows.js';
+import { flowOf, libSample } from '#lib/test-flows.js';
+import type { EditorAdapters } from '#lib/editor.svelte.js';
 import html from '../app.html?raw';
 import Page from './+page.svelte';
 
@@ -56,6 +57,32 @@ describe('打開 App 回上次那支', () => {
 		for (let i = 0; i < 10; i++) await flush();
 		expect(page.editor.file.cloudId).toBe('c1');
 		expect(page.session.flow?.name).not.toBe('全國賽');
+	});
+});
+
+describe('回上次那支：音樂之後才載入好（#379）', () => {
+	it('場地先出來；播放鍵寫「音樂載入中」按不下去，時間軸那段寫載入中（不寫找不到音樂）；載入好了才能播', async () => {
+		const flow = libSample();
+		flow.audio = [{ id: 'a1', file: 'audio/a1.mp3', name: 'song.mp3' }];
+		flow.segments = flow.segments.map((seg) => (seg.kind === 'music' ? { ...seg, audioId: 'a1' } : seg));
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(flow, { a1: new Uint8Array([1, 2, 3]) }));
+		fakeHost({ shell: fakeShell(['settings']), settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		document.documentElement.dataset.reopening = '';
+		let finish = () => {};
+		const decode = (() => new Promise((ok) => (finish = () => ok({ durationSec: 30, peaks: [] })))) as EditorAdapters['decode'];
+		render(Page, editorPage(null, { draftStore: drafts.store, decode }).props);
+		await flush();
+		await flush();
+		expect('reopening' in document.documentElement.dataset).toBe(false);
+		const loading = screen.getByRole('button', { name: '音樂載入中…' }) as HTMLButtonElement;
+		expect(loading.disabled).toBe(true);
+		expect(screen.getByText('載入中…')).toBeTruthy();
+		expect(screen.queryByText('找不到音樂')).toBeNull();
+		finish();
+		await flush();
+		expect((screen.getByRole('button', { name: '播放' }) as HTMLButtonElement).disabled).toBe(false);
+		expect(screen.queryByText('載入中…')).toBeNull();
 	});
 });
 

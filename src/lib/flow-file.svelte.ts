@@ -22,7 +22,8 @@ import {
 	writeFlowFile,
 	type Attempt,
 	type AudioBytes,
-	type Flow
+	type Flow,
+	type ReadFlowFileResult
 } from '#lib/core';
 import { reasonText, whyText } from '#lib/reason-text.js';
 import { CloudSteps, withUnsent } from '#lib/cloud-steps.svelte.js';
@@ -293,16 +294,20 @@ export class FlowFile {
 	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
 	 * saver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。draftId：這支流程的草稿 id（沒給就照檔案算）。
 	 * 另一個分頁正在編這支流程就不開，說原因。blocked：換流程前最後再看一次，回 true 就不開（殼交來的檔，#384）。
+	 * read：已經拆過的（打開草稿時拆過一次，不再拆第二次，#379）。
+	 * musicLater：不等音樂解碼好就換上（回上次那支，先畫場地，#379）；解不開的音樂解完才說。
 	 */
 	async #openBytes(
 		bytes: Uint8Array,
 		fileName: string | null,
 		saver: FileSaver | null = null,
 		draftId = fileDraftId(bytes),
-		blocked?: () => boolean
+		blocked?: () => boolean,
+		read?: ReadFlowFileResult,
+		musicLater = false
 	): Promise<void> {
 		const session = this.#editor.session;
-		const r = readFlowFile(bytes);
+		const r = read ?? readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
 			const message = m.file_cannot_open({ name: fileName ?? (r.kind === 'ok' ? r.flow.name : m.file_draft()), reason });
 			if (session.flow) session.notice = message;
@@ -328,7 +333,8 @@ export class FlowFile {
 			}
 		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
-		const music = await this.#editor.readMusic(r.audio);
+		const later = musicLater ? this.#editor.musicLater(r.audio) : null;
+		const music = later ? later.music : await this.#editor.readMusic(r.audio);
 		if (blocked?.()) return;
 		const approved = this.#openApproved;
 		this.#openApproved = false;
@@ -342,12 +348,18 @@ export class FlowFile {
 			// 開好了寫檔名（草稿救回來的不是檔，不寫）；缺音樂的提示本來就有檔名。開檔時拿掉的書籤、排好的站位（手改過的檔）接在後面說
 			const parts: (string | false)[] = r.missingSegmentIds.length
 				? [missingAudioText(fileName ?? m.file_draft(), missingAudioNames(r.flow, r.missingSegmentIds))]
-				: [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && (host().shell.inApp ? m.file_broken_audio_app() : m.file_broken_audio())];
+				: [fileName !== null && m.file_opened({ name: fileName }), music.hasBroken && brokenAudioText()];
 			if (r.droppedBookmarks.length) parts.push(droppedBookmarksText(r.droppedBookmarks));
 			if (r.sortedFormations) parts.push(m.file_sorted_formations());
 			const said = parts.filter((x): x is string => !!x);
 			session.notice = said.length ? joinNotes(said) : '';
 			if (r.missingSegmentIds.length) this.#noteMissing();
+		});
+		// 音樂後來才解碼好（不等它）：還是這支流程的音樂才說有解不開的
+		void later?.decoded.then(() => {
+			if (this.#editor.music === music && music.hasBroken && !r.missingSegmentIds.length) {
+				session.notice = joinNotes([session.notice, brokenAudioText()].filter((x) => !!x));
+			}
 		});
 	}
 
@@ -434,7 +446,8 @@ export class FlowFile {
 		// 音樂跟離線副本存著的一樣：存離線副本時音樂不動
 		const sameAudio =
 			!!fromCopy && !copy && fromServer.audio.length === Object.keys(have).length && fromServer.audio.every((a) => a.id in have);
-		const music = await this.#editor.readMusic(audio);
+		// App 打開時先開離線副本（first）：不等音樂解碼好，先畫場地（#379）
+		const music = first ? this.#editor.musicLater(audio).music : await this.#editor.readMusic(audio);
 		// 讀完音樂才讀這台存著的：等的時候別的分頁記的也拿到
 		const stored = (await store.unsent()).find((u) => u.flowId === id);
 		if (!still()) return;
@@ -973,7 +986,7 @@ export class FlowFile {
 	}
 
 	/** 打開一份草稿（openRecent 那樣）；草稿沒了、打不開回 false。 */
-	async #openDraft(id: string): Promise<boolean> {
+	async #openDraft(id: string, musicLater = false): Promise<boolean> {
 		let draft = null;
 		try {
 			draft = await this.#editor.adapters.draftStore.load(id);
@@ -982,10 +995,10 @@ export class FlowFile {
 		}
 		const r = draft && readFlowFile(draft.bytes);
 		if (!draft || !r || r.kind !== 'ok') return false;
-		const unchanged = fileDraftId(draft.bytes) === id;
+		const unchanged = isFileDraftId(draft.bytes, id);
 		// App 裡記著存到哪（#385）：存檔照樣蓋回那個檔
 		const target = loadSaveTarget(id);
-		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, target ? this.#editor.adapters.createSaver(target) : null, id);
+		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, target ? this.#editor.adapters.createSaver(target) : null, id, undefined, r, musicLater);
 		return true;
 	}
 
@@ -1110,7 +1123,7 @@ export class FlowFile {
 			// 開了交來的檔
 		}
 		else if (last.startsWith(CLOUD_LAST)) await this.#reopenCloud(last.slice(CLOUD_LAST.length));
-		else if (last) await this.#openDraft(last);
+		else if (last) await this.#openDraft(last, true);
 		if (!this.#editor.session.flow) await this.#readRecent();
 		this.#reopening = false;
 		this.#draftChecked = true;
@@ -1323,6 +1336,11 @@ function missingAudioText(name: string, files: string[]): string {
 	return (files.length === 1 ? m.file_opened_missing_audio_one : m.file_opened_missing_audio)({ name, files: quoted });
 }
 
+/** 有這個瀏覽器（App）解不開的音樂檔：播放時那一段沒聲音。 */
+function brokenAudioText(): string {
+	return host().shell.inApp ? m.file_broken_audio_app() : m.file_broken_audio();
+}
+
 /** 剛建好的流程的草稿 id：每次都不一樣。 */
 function newDraftId(): string {
 	return `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -1333,6 +1351,14 @@ function fileDraftId(bytes: Uint8Array): string {
 	let hash = 0x811c9dc5;
 	for (const b of bytes) hash = Math.imul(hash ^ b, 0x01000193);
 	return `f${bytes.length.toString(36)}-${(hash >>> 0).toString(36)}`;
+}
+
+/**
+ * 這份位元組就是草稿 id 那個檔（沒改過）嗎：跟 fileDraftId(bytes) === id 一樣，
+ * 只是 id 的開頭（f 加長度）對不上就不用整個檔算一次（回上次那支時少算幾十毫秒，#379）。
+ */
+function isFileDraftId(bytes: Uint8Array, id: string): boolean {
+	return id.startsWith(`f${bytes.length.toString(36)}-`) && fileDraftId(bytes) === id;
 }
 
 /** 草稿照存的時間排，最近的在前；沒記時間的（舊版編輯器存的）最舊。 */

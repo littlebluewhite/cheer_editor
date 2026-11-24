@@ -124,6 +124,8 @@
 	const guideHref = `${resolve('/guide')}?from=editor`;
 
 	const flow = $derived(session.flow);
+	/** 音樂還在載入（回上次那支先畫場地、音樂之後才好，#379）：播放鍵按不下去。 */
+	const musicLoading = $derived(editor.music.loading);
 	// App：打開了流程就是編輯畫面，殼讓整頁不回彈（#376）
 	tellShellScreen(() => flow !== null);
 	// 新版 service worker 要自動重新載入前先看這個（src/hooks.client.ts）。
@@ -145,8 +147,8 @@
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
 	onMount(() => void home.load());
-	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。 */
-	const webUpdate = followWebUpdate(host().shell, () => !session.flow && !editor.hasUnsavedWork);
+	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。打開 App 還在回上次那支不算閒著：不在開到一半時重新載入（#379） */
+	const webUpdate = followWebUpdate(host().shell, () => !session.flow && !editor.hasUnsavedWork && !editor.file.reopening);
 	onMount(() => webUpdate.stop);
 	$effect(() => {
 		if (!flow) untrack(() => webUpdate.cameHome());
@@ -782,9 +784,10 @@
 					type="button"
 					class="play"
 					class:on={playback.playing}
-					aria-label={playback.playing ? m.editor_pause() : m.editor_play()}
-					title={flow.segments.length ? m.editor_play_title() : m.editor_add_segment_first()}
-					disabled={!flow.segments.length && !playback.playing}
+					class:loading={musicLoading}
+					aria-label={playback.playing ? m.editor_pause() : musicLoading ? m.editor_music_loading() : m.editor_play()}
+					title={musicLoading ? m.editor_music_loading() : flow.segments.length ? m.editor_play_title() : m.editor_add_segment_first()}
+					disabled={(!flow.segments.length && !playback.playing) || musicLoading}
 					onclick={() => playback.toggle()}><Icon name={playback.playing ? 'pause' : 'play'} size={18} /></button
 				>
 				{#snippet board()}
@@ -2342,6 +2345,20 @@
 	.play:hover {
 		background: #ff6a45;
 		border-color: #ff6a45;
+	}
+	/* 音樂還在載入（回上次那支先畫場地，#379）：灰的、一閃一閃，載入好了才按得下去 */
+	.play.loading {
+		animation: music-loading 1s ease-in-out infinite alternate;
+	}
+	@keyframes music-loading {
+		to {
+			opacity: 0.45;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.play.loading {
+			animation: none;
+		}
 	}
 	/* 沒有段：灰的，按不下去 */
 	.play:disabled,
