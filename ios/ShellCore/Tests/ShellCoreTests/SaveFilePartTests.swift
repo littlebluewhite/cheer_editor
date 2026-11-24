@@ -114,6 +114,24 @@ struct SaveFilePartTests {
         #expect(asked == 2)
     }
 
+    @Test func 蓋回原檔是寫好整份再換上_不在原檔上寫到一半() async throws {
+        // 寫到一半失敗（空間不夠、App 被關掉）時原檔要還在：原本打開的那份看到的還是舊的位元組，資料夾裡沒多出別的檔
+        let url = handedFile("全國賽.cheer", Data(repeating: 1, count: 4096))
+        let before = try FileHandle(forReadingFrom: url)
+        defer { try? before.close() }
+        try await FilePlaces.inPlace.write(Data([9, 9]), url)
+        #expect(try Data(contentsOf: url) == Data([9, 9]))
+        #expect(try before.readToEnd() == Data(repeating: 1, count: 4096))
+        #expect(names(in: url.deletingLastPathComponent()) == ["全國賽.cheer"])
+    }
+
+    @Test func 蓋回原檔_檔被刪了不在原地重建() async throws {
+        let url = handedFile("全國賽.cheer", Data([1]))
+        try FileManager.default.removeItem(at: url)
+        await #expect(throws: (any Error).self) { try await FilePlaces.inPlace.write(Data([9]), url) }
+        #expect(names(in: url.deletingLastPathComponent()) == [])
+    }
+
     @Test func 傳給別人_交給分享選單_回有沒有送出() async throws {
         var shared: [(String, Data, PrintButton?)] = []
         var sent = true

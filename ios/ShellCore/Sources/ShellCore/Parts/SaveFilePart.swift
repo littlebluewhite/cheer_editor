@@ -48,7 +48,7 @@ public struct FilePlaces: Sendable {
                     // 只蓋掉存在的檔：檔被刪了就不在原地方重建一個，改問存到哪
                     result = Result {
                         guard FileManager.default.fileExists(atPath: at.path) else { throw CocoaError(.fileNoSuchFile) }
-                        try bytes.write(to: at)
+                        try replace(at, with: bytes)
                     }
                 }
                 if let failure { throw failure }
@@ -56,6 +56,21 @@ public struct FilePlaces: Sendable {
             }.value
         }
     )
+}
+
+/// 蓋回原檔（#385 審查）：先在 App 自己的暫存資料夾寫好整份，再整個換上（replaceItemAt），寫到一半失敗（空間不夠、App 被關掉）原檔不變。
+/// 換上失敗（推論：別家的檔案提供者不給換）而整份已經寫好了（空間夠）才退回直接寫進原檔。
+private func replace(_ url: URL, with bytes: Data) throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("save-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let staged = folder.appendingPathComponent(url.lastPathComponent)
+    try bytes.write(to: staged)
+    do {
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: staged)
+    } catch {
+        try bytes.write(to: url)
+    }
 }
 
 enum SaveFileError: Error { case badBody }
