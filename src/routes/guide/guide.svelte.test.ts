@@ -504,7 +504,14 @@ describe('App 的做法（#398）', () => {
 			return text;
 		};
 		const text = all.join('\n');
-		for (const w of ['各存各的、各登各的', '先存成流程檔', '刪掉 App', '文字大小', 'App Store 更新']) expect(text, w).toContain(w);
+		for (const w of ['各存各的、各登各的', '先存成流程檔', '刪掉 App', 'App Store 更新']) expect(text, w).toContain(w);
+		expect(text, '文字大小：真機試過字沒變大（#397）').not.toContain('文字大小');
+		expect(near('開啟流程檔'), '「檔案」點 .cheer').toMatch(/App 裡：.*「檔案」App.*\.cheer/);
+		expect(near('存檔'), '存回原本的檔').toMatch(/App 裡：.*存回那個檔.*問存到哪/);
+		expect(near('另存新檔'), '先複製一份').toMatch(/App 裡：.*複製一份/);
+		expect(near('傳給隊員'), '傳給別人').toContain('「選單」的「傳給別人」');
+		expect(near('延遲校正'), '每個喇叭').toMatch(/App 裡：.*每個喇叭各記一個/);
+		expect(near('手機開流程檔'), '分享選單').toMatch(/App 裡：.*「流程編輯器」.*第一排/);
 		expect(near('最近的流程'), '刪掉 App').toContain('刪掉 App，裡面的草稿就沒了');
 		expect(near('八拍表'), '分享').toContain('在列印畫面按「分享」');
 		expect(near('輸出影片'), '沒有輸出影片').toMatch(/App 裡：.*沒有「輸出影片」/);
