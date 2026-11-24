@@ -301,7 +301,8 @@ service worker 只給建置時存好的頁面，網址後面的 `?…` 不看（
 ## App 圖示
 
 圖示畫在 `static/favicon.svg`（墊子條紋加圓點，用 `src/app.css` 的顏色）。分頁上的 favicon、
-iPhone／iPad 主畫面的 `apple-touch-icon.png`、PWA manifest 的 `pwa-192x192.png`／`pwa-512x512.png` 都從它產生。
+iPhone／iPad 主畫面的 `apple-touch-icon.png`、PWA manifest 的 `pwa-192x192.png`／`pwa-512x512.png`、
+App 的圖示 `ios/App/Assets.xcassets/AppIcon.appiconset/icon-1024.png`（不透明，圓角 iOS 自己切）都從它產生。
 `static/` 底下的檔會一起被 service worker 先存起來，離線也有圖示。
 
 改了 SVG 就重新產生一次（要先裝 ImageMagick），產生的檔一起 commit：
