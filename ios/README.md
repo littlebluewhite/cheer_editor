@@ -37,6 +37,7 @@ ios/
     Update/WebUpdates.swift     殼自己更新網頁：App 這邊怎麼接（#393，下面「殼自己更新網頁」）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
+  store/                  上架用的草稿：商店頁的字、審查備註、隱私標示、問卷、截圖、範例流程檔（#399，store/README.md）
   ShellCore/              殼的規則：Swift 套件，不碰畫面。swift test 在 Mac 上跑
     Sources/ShellCore/Bridge/     橋：Bridge、BridgePart、JSONValue、BootScript
     Sources/ShellCore/Parts/      橋上的每一塊，一件事一個檔（ReadyPart.swift）；跟別的檔一起做一件事的放那件事的資料夾（CloudMusicPart 在 Forward/、WebUpdatePart 在 Update/）
