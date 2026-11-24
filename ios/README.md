@@ -33,6 +33,7 @@ ios/
     Bridge/ShellParts.swift     ★ 橋上的每一塊（登記）
     Bridge/AppOpenFile.swift    打開流程檔：.cheer 的型別、選檔畫面（#384，下面「打開流程檔」）
     Bridge/AppSaveFile.swift    存流程檔：存檔畫面、分享選單（#385，下面「存流程檔」）
+    Bridge/AppSpeaker.swift     喇叭和延遲：讀 AVAudioSession、聽換喇叭（#388，下面「喇叭和延遲」）
     Update/WebUpdates.swift     殼自己更新網頁：App 這邊怎麼接（#393，下面「殼自己更新網頁」）
     Web.bundle/           npm run ios:web 放進來的網頁（不進 git）
   PipeTests/              模擬器上「真的 WKWebView」的管子測試（target PipeTests）；new-flow-play.js 用真的那包網頁新建流程、放音樂、播放
@@ -95,7 +96,7 @@ xcrun simctl launch <UDID> com.littlebluewhite.cheereditor
 
 ### 「問殼」的名字
 
-`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`openFile`（打開交給 App 的流程檔、「開啟流程檔」請殼叫出選檔畫面，#384）、`saveFile`（存檔蓋回原本的檔、問存到哪、「傳給別人」，#385）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
+`features` 裡的字串就是 `can()` 問的名字，由加那一塊的票自己取，寫在那一塊的 `feature`。現在有 `screen`（編輯畫面整頁不回彈，#376）、`drafts`（草稿存在殼裡，#377）、`settings`（小設定存在殼裡，#378）、`cloudRoom`（雲端流程的房間經過殼，#381）、`cloudMusic`（殼代傳雲端流程的音樂，#382）、`offline`（離線存放，#383）、`nowPlaying`（鎖定畫面的播放鍵，#389）、`openFile`（打開交給 App 的流程檔、「開啟流程檔」請殼叫出選檔畫面，#384）、`saveFile`（存檔蓋回原本的檔、問存到哪、「傳給別人」，#385）、`speaker`（殼讀喇叭和系統說的延遲、每個喇叭的延遲校正，#388）、`print`（列印，#391）、`webUpdate`（殼自己更新網頁，#393）；`ready` 是底層的管子，不算。取名用小寫駝峰、講那件事（例：`print`、`nowPlaying`），一取定就不要改：舊殼認得的名字凍在情境裡。
 
 ### 加一塊（一件事）
 
@@ -249,7 +250,7 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 ## 小設定、上次那支（#378）
 
-「我」、印誰、停下回起播點、圖例、分隔線大小存在殼：`Application Support/settings.json`（一個 JSON，key 跟網頁版 localStorage 的一樣；key 裡有流程名字，不拿來當檔名；會進 iCloud 備份）。延遲校正的 key 也走這裡，殼讀喇叭延遲是 #388。語言、使用說明的打勾照舊存在網頁裡。
+「我」、印誰、停下回起播點、圖例、分隔線大小存在殼：`Application Support/settings.json`（一個 JSON，key 跟網頁版 localStorage 的一樣；key 裡有流程名字，不拿來當檔名；會進 iCloud 備份）。延遲校正不在這裡：殼會 `speaker` 時每個喇叭各記一個（#388，下面「喇叭和延遲」），網頁不讀、不寫 `cheer-editor:latencyMs`；還不會 `speaker` 的舊殼才照舊走這裡。語言、使用說明的打勾照舊存在網頁裡。
 
 - 殼：`ShellCore/Sources/ShellCore/Parts/SettingsPart.swift`（`settings`）。網頁：`src/lib/shell-settings.ts`，殼會 `settings` 才換（`Host.settings`）。說的話：`bridge-scenarios/current/settings.json`。
 - **怎麼拿**：document start 塞一份（boot 的 `settings`），網頁建編輯器時照舊同步讀；改了網頁先改自己記憶體裡那份，再馬上 `settingSet`／`settingRemove` 寫回殼。
@@ -309,6 +310,20 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 - **`xcrun simctl openurl` 交來的不是原檔**：殼收到的是 App 自己 `Documents/Inbox/` 裡的副本（`openInPlace = false`，檔名還會加 `-1`、`-2`），所以 #384 上面寫的「openurl 開了那支流程」走的是副本那條路。「檔案」App 裡用手點才是原地打開，模擬器上沒辦法用指令點，**「「檔案」點進來的檔記成書籤、App 關掉再開還寫不寫得回去」沒驗到**。沒驗到就照退路：書籤找不回、寫不進去時殼自己改問存到哪（不用改程式）。要在真機（#379）或模擬器的「檔案」App 用手試：點 `.cheer` → 改 → 存檔（原檔變了、沒多新檔）→ 從 App 切換器滑掉 → 再開 → 改 → 存檔。
 - 管子測試 `PipeTests/SaveFilePipeTests.swift`：真的那包網頁、真的書籤和 `NSFileCoordinator`，原地交來的檔存檔蓋回去、沒多新檔；副本第一次問存到哪、第二次蓋回去；選單「傳給別人」送 `.zip`。模擬器的 App 不受 sandbox 限制，security-scoped 的部分這裡驗不到。
 - 沒試的（系統畫面測試按不到）：存檔畫面（存、取消、同名要不要取代）、存檔畫面回的網址記成書籤後能不能再寫、分享選單送到 LINE、iCloud Drive 裡的檔。
+
+## 喇叭和延遲（#388）
+
+網頁認不出現在用哪個喇叭、也收不到換喇叭的通知，所以殼讀了告訴網頁。音樂照舊由網頁播（Web Audio），殼只讀、不改 audio session 的種類、不 `setActive`。
+
+- 殼：`ShellCore/Sources/ShellCore/Parts/SpeakerPart.swift`（`speaker`）、`App/Bridge/AppSpeaker.swift`。網頁：`src/lib/shell-speaker.svelte.ts`（殼會 `speaker` 才換 `Host.speaker`；網頁版是 `src/lib/speaker.svelte.ts`）。說的話：`bridge-scenarios/current/speaker.json`。
+- **三樣一起給**：一開始塞（boot 的 `speaker`），換喇叭（`AVAudioSession.routeChangeNotification`）時說 `speakerChanged`：`id`（`portType|uid`，網頁不拆）、`name`（`portName`）、`systemLatencyMs`（`AVAudioSession.outputLatency` 換成毫秒）、`latencyMs`（這個喇叭的延遲校正）。網頁改延遲校正送 `speakerLatency`（帶 `id`）。網頁在 App 一開始（`useShellIfInApp`）就聽，不是編輯頁打開才聽。
+- **播放頭扣「系統說的延遲＋延遲校正」**（`Playback` 的 `#delayMs`）。網頁版系統說的是 0，照舊只扣延遲校正。**±1000 只管延遲校正**（網頁 `setLatency`、殼 `speakerLatency` 都擋）；系統說的延遲不存、不擋，AirPlay 報 2 秒照扣。
+- **每個喇叭各記一個**：`Application Support/speaker-latency.json`（喇叭的 id → 毫秒；會進 iCloud 備份）。認不得的（`uid` 變了）當新喇叭，從 0 開始。
+- **斷線就停**：`routeChangeNotification` 的 reason 是 `oldDeviceUnavailable`、換之前（`previousRoute`）的喇叭是藍牙（A2DP、LE、HFP）或耳機（`Headphones`）時，`speakerChanged` 帶 `stop: true`，網頁停止播放（停在那裡，不回起播點）。AirPlay、一般換喇叭不停。
+- 「⋯」小窗的提示在 App 裡換成 `editor_latency_hint_app`（寫出喇叭的名字，講五件事，不寫系統說的毫秒數）。
+- **開發版（Debug）**多塞 `speakerDebug`，小窗多一行「系統延遲：殼 … ms／網頁 … ms」（網頁讀 `AudioContext.outputLatency`，不是 running 時是 0），給 #390 比。上架版沒有。
+- 測過的只有 Mac 上的測試（ShellCore、Vitest）；模擬器上只有建得起來、管子測試照樣過（沒有專測喇叭的管子測試）。**沒驗的**（模擬器沒有藍牙、量不了）：App 行程收不收得到 `routeChangeNotification`（播放是 WebKit 在做）、App 行程讀的 `outputLatency` 跟 WebKit 真的播出去的對不對得上、`uid` 斷線再連或重新配對變不變、播放中換喇叭系統說的延遲有沒有跟著換、斷線真的停：都在 #390 真機驗。
+- **#390 先量內建喇叭**（推論，沒量）：#387 量到沒扣系統說的延遲時，內建喇叭的畫面已經比聲音晚約 38 ms；扣得越多畫面越晚，現在多扣系統說的延遲（內建喇叭約 10 ms 上下），畫面會晚約 38 ms＋那個數字，可能超過規格的「聲音最多比畫面早 40 ms」，提示的「內建喇叭放 0 就好」也會不對。量了真的超過就回來找網站主人（規格寫要扣，這張票照扣）。
 
 ## 還沒做的（後面的票）
 

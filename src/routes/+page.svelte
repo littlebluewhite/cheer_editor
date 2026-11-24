@@ -29,6 +29,7 @@
 	import { flushSync, onMount, tick, untrack, type ComponentProps } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { loadFlowSetting, MAX_LATENCY_MS, saveFlowSetting } from '#lib/local-settings.js';
+	import { sharedAudioContext } from '#lib/audio/decode.js';
 	import { SPEEDS } from '#lib/playback.svelte.js';
 	import { dodgeKeepVisible } from '#lib/toast-dodge.js';
 	import { below, popover } from '#lib/popover.svelte.js';
@@ -138,6 +139,8 @@
 	onMount(() => editor.file.connect(reopenAfterUpdate(host().shell)));
 	// App 裡：鎖定畫面的播放鍵（#389）
 	onMount(() => lockScreen(editor));
+	// App 裡：藍牙喇叭、耳機斷線就停（#388）
+	onMount(() => playback.followSpeaker());
 
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
@@ -364,6 +367,15 @@
 		playback.setLatency(used);
 		input.value = String(used);
 		if (!Number.isNaN(ms) && used !== ms) session.notice = m.editor_latency_clamped({ max: MAX_LATENCY_MS, used });
+	}
+
+	/** 開發版的 App（#388）：網頁讀的系統延遲（毫秒），給 #390 跟殼讀的比。不是 running 時是 0，所以小窗開著就每 0.5 秒讀一次。 */
+	let webLatencyMs = $state(0);
+	function readWebLatency() {
+		const read = () => (webLatencyMs = Math.round(sharedAudioContext().outputLatency * 1000));
+		read();
+		const timer = setInterval(read, 500);
+		return () => clearInterval(timer);
 	}
 
 	/** 「重複」滑鼠移上去的說明：照現在按下去會怎樣寫。 */
@@ -915,7 +927,17 @@
 							/>
 							<span class="unit" aria-hidden="true">{m.editor_ms()}</span>
 						</label>
-						<p class="more-hint">{m.editor_latency_hint()}</p>
+						<p class="more-hint">
+							{playback.speakerName === null
+								? m.editor_latency_hint()
+								: m.editor_latency_hint_app({ speaker: playback.speakerName })}
+						</p>
+						{#if playback.speakerDebug}
+							<!-- 開發版的 App 才有（#388、#390），上架版沒有，不翻譯 -->
+							<p class="more-hint" {@attach readWebLatency}>
+								系統延遲：殼 {Math.round(playback.systemLatencyMs)} ms／網頁 {webLatencyMs} ms
+							</p>
+						{/if}
 						<label class="return-on-stop">
 							<input
 								type="checkbox"

@@ -25,13 +25,8 @@ import {
 import type { AudioEngine } from '#lib/audio/engine.js';
 import { createPlayer, type Lap, type Player } from '#lib/audio/player.js';
 import type { SessionPlayback } from '#lib/editor-session.svelte.js';
-import {
-	loadLatencyMs,
-	loadReturnOnStop,
-	MAX_LATENCY_MS,
-	saveLatencyMs,
-	saveReturnOnStop
-} from '#lib/local-settings.js';
+import { loadReturnOnStop, MAX_LATENCY_MS, saveReturnOnStop } from '#lib/local-settings.js';
+import { host } from '#lib/host.js';
 
 /** 播放速度可以選的：正常、0.75x、0.5x（慢速時音高不變）。 */
 export const SPEEDS = [1, 0.75, 0.5] as const;
@@ -76,8 +71,8 @@ export class Playback implements SessionPlayback {
 	#range = $state<RepeatRange | null>(null);
 	/** 段設定的「從第一拍聽」正在響：按鈕換成停止，關掉段設定就停。 */
 	#previewing = $state(false);
-	/** 延遲校正（毫秒）：存在這台電腦，不進流程檔。 */
-	#latencyMs = $state(loadLatencyMs());
+	/** 喇叭和延遲校正（#lib/speaker.svelte.js）：網頁版存在這台裝置；App 裡殼告訴我們，每個喇叭一個。不進流程檔。 */
+	readonly #speaker = host().speaker();
 	/** 起播點：這次從哪一秒開始播（播放中點八拍尺跳過去也算）。停下來回到這裡。 */
 	#startSec = $state(0);
 	/** 停下來回到起播點：存在這台電腦，預設開著。 */
@@ -137,8 +132,34 @@ export class Playback implements SessionPlayback {
 		return this.#repeat;
 	}
 
+	/** 延遲校正（毫秒），現在這個喇叭的。 */
 	get latencyMs(): number {
-		return this.#latencyMs;
+		return this.#speaker.latencyMs;
+	}
+
+	/** 現在接的喇叭的名字（App 裡殼說的）；網頁版是 null。 */
+	get speakerName(): string | null {
+		return this.#speaker.name;
+	}
+
+	/** 系統說的延遲（毫秒，App 裡殼讀的）；網頁版 0。 */
+	get systemLatencyMs(): number {
+		return this.#speaker.systemLatencyMs;
+	}
+
+	/** 開發版的 App：多顯示殼讀的和網頁讀的系統延遲。 */
+	get speakerDebug(): boolean {
+		return this.#speaker.debug;
+	}
+
+	/** 播放頭要比喇叭晚多少（毫秒）：系統說的延遲＋延遲校正（網頁版系統說的是 0）。 */
+	get #delayMs(): number {
+		return this.#speaker.systemLatencyMs + this.#speaker.latencyMs;
+	}
+
+	/** 喇叭斷線（App 裡殼說藍牙喇叭、耳機斷了）就停下；回傳「不聽了」的函式。編輯頁一開始叫一次。 */
+	followSpeaker(): () => void {
+		return this.#speaker.onStop(() => this.pause());
 	}
 
 	/** 重複範圍現在在哪（全域秒數）；只放了 A 時 b 是 null。 */
@@ -203,7 +224,7 @@ export class Playback implements SessionPlayback {
 
 	/** 停下。播放頭先照喇叭撥到現在：App 鎖螢幕、切到別的 App 時畫面沒在走，播放頭還停在那一刻（#389）。 */
 	pause() {
-		if (this.#playing && this.#player) this.#sec = this.#player.tick(this.#latencyMs);
+		if (this.#playing && this.#player) this.#sec = this.#player.tick(this.#delayMs);
 		this.#stop();
 	}
 
@@ -457,13 +478,13 @@ export class Playback implements SessionPlayback {
 	}
 
 	/**
-	 * 延遲校正（毫秒）：只移畫面上的播放頭，不動聲音；存在這台電腦。
+	 * 延遲校正（毫秒）：只移畫面上的播放頭，不動聲音；存在這台裝置（App 裡記在現在這個喇叭）。
 	 * 不是數字（清空、亂填）或超出範圍就不改，回傳 false（欄位要回到現在的值，不然欄位空著，實際還在用舊值）。
+	 * ±1000 只管延遲校正，系統說的延遲不經過這裡。
 	 */
 	setLatency(ms: number): boolean {
 		if (!(Math.abs(ms) <= MAX_LATENCY_MS)) return false;
-		this.#latencyMs = ms;
-		saveLatencyMs(ms);
+		this.#speaker.setLatency(ms);
 		return true;
 	}
 
@@ -529,7 +550,7 @@ export class Playback implements SessionPlayback {
 	#frame = () => {
 		this.#framePending = false;
 		if (!this.#playing || !this.#player) return;
-		this.#sec = this.#player.tick(this.#latencyMs);
+		this.#sec = this.#player.tick(this.#delayMs);
 		if (this.#player.playing) return this.#loop();
 		this.#playing = false;
 		if (this.#returnOnStop) this.#backToStart();

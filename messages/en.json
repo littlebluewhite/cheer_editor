@@ -1056,6 +1056,7 @@
 	"editor_latency_ms": "Latency offset (ms)",
 	"editor_ms": "ms",
 	"editor_latency_hint": "With Bluetooth speakers or headphones, increase this if the screen runs ahead of the sound. Saved on this device, not in the routine file.",
+	"editor_latency_hint_app": "Now playing through “{speaker}”; its latency is already subtracted automatically. Leave 0 for the built-in speaker or wired headphones. With Bluetooth speakers or headphones, increase this by 10 at a time if the screen runs ahead of the sound. Each speaker keeps its own value, saved on this device, not in the routine file.",
 	"editor_return_on_stop": "Return to play start on stop",
 	"editor_return_on_stop_hint": "The play start is where this playback began. Shift+Space does the opposite. Saved on this device.",
 	"editor_skip_timeline": "Skip to timeline",

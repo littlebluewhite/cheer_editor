@@ -1056,6 +1056,7 @@
 	"editor_latency_ms": "延遲校正（毫秒）",
 	"editor_ms": "毫秒",
 	"editor_latency_hint": "用藍牙喇叭或耳機時，畫面比聲音快就調大。存在這台裝置，不進流程檔。",
+	"editor_latency_hint_app": "現在接的是「{speaker}」，這個喇叭的延遲已經自動扣掉了。內建喇叭、有線耳機放 0 就好；藍牙喇叭、耳機：畫面比聲音快就調大，每次加 10。每個喇叭各記一個，存在這台裝置，不進流程檔。",
 	"editor_return_on_stop": "停下來回到起播點",
 	"editor_return_on_stop_hint": "起播點是這次開始播的地方。Shift＋空白鍵做相反的事。存在這台裝置。",
 	"editor_skip_timeline": "跳到時間軸",

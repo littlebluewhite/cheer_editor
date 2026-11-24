@@ -1,0 +1,48 @@
+{
+	"about": "喇叭和延遲（#388）：殼讀現在接的是哪個喇叭、系統說的延遲（毫秒），加上殼替這個喇叭記的延遲校正，一開始塞（boot 的 speaker），換喇叭時說 speakerChanged。id 是殼認喇叭的編號（portType|uid，網頁不拆）。網頁改延遲校正時送 speakerLatency（帶 id：換喇叭途中改的也記到對的那個）。系統說的延遲不經過 ±1000 的檢查；延遲校正超過 ±1000 網頁不送（殼也回 failed）。藍牙喇叭、耳機斷線時 speakerChanged 帶 stop: true，網頁停止播放。情境裡的 uid 是編的。",
+	"scenarios": [
+		{
+			"name": "換喇叭：每個喇叭各記一個延遲校正，換回來還是那個值",
+			"boot": {
+				"shellVersion": "0.1.0",
+				"shellBuild": 1,
+				"features": ["speaker"],
+				"speaker": { "id": "Speaker|built-in", "name": "iPhone 喇叭", "systemLatencyMs": 10, "latencyMs": 0 }
+			},
+			"steps": [
+				{ "from": "web", "name": "speakerLatency", "body": { "id": "Speaker|built-in", "ms": 100 }, "reply": null },
+				{
+					"from": "shell",
+					"name": "speakerChanged",
+					"body": { "id": "BluetoothA2DPOutput|aa-bb", "name": "練習場喇叭", "systemLatencyMs": 112, "latencyMs": 0, "stop": false }
+				},
+				{
+					"from": "shell",
+					"name": "speakerChanged",
+					"body": { "id": "Speaker|built-in", "name": "iPhone 喇叭", "systemLatencyMs": 10, "latencyMs": 100, "stop": false }
+				}
+			]
+		},
+		{
+			"name": "藍牙斷線就停",
+			"boot": {
+				"shellVersion": "0.1.0",
+				"shellBuild": 1,
+				"features": ["speaker"],
+				"speaker": { "id": "Speaker|built-in", "name": "iPhone 喇叭", "systemLatencyMs": 10, "latencyMs": 0 }
+			},
+			"steps": [
+				{
+					"from": "shell",
+					"name": "speakerChanged",
+					"body": { "id": "BluetoothA2DPOutput|aa-bb", "name": "練習場喇叭", "systemLatencyMs": 112, "latencyMs": 0, "stop": false }
+				},
+				{
+					"from": "shell",
+					"name": "speakerChanged",
+					"body": { "id": "Speaker|built-in", "name": "iPhone 喇叭", "systemLatencyMs": 10, "latencyMs": 0, "stop": true }
+				}
+			]
+		}
+	]
+}
