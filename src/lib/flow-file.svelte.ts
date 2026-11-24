@@ -281,9 +281,12 @@ export class FlowFile {
 		} catch {
 			picked = null;
 		}
-		// 按取消：剛答應丟掉修改只算這次選檔，之後開檔（App 裡從「檔案」交來的，#384）照樣先問
-		if (!picked) this.#openApproved = false;
-		else await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		// 剛答應丟掉修改只算這次選檔：按取消、選的檔打不開、草稿那題按取消，之後開檔（App 裡從「檔案」交來的，#384）照樣先問
+		try {
+			if (picked) await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		} finally {
+			this.#openApproved = false;
+		}
 	}
 
 	/**

@@ -242,6 +242,27 @@ describe('選檔畫面按取消（#384）', () => {
 	});
 });
 
+describe('選檔畫面選了打不開的檔（#384）', () => {
+	it('答應丟掉修改後選了不是流程檔的：之後從「檔案」交來的檔照樣先問', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null, { pickFlowFile: async () => ({ file: new File(['hello'], '筆記.cheer'), saver: fakeSaver().saver }) });
+		const disconnect = editor.file.connect();
+		await settle();
+		editor.file.create(practice());
+		session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		let picking: Promise<void> | undefined;
+		expect(editor.file.mayChoose(() => (picking = editor.file.pick()))).toBe(false);
+		await editor.file.answer('discard');
+		await picking;
+		expect(session.flow?.name).toBe('練習二');
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		disconnect();
+	});
+});
+
 describe('殼讀不到交來的檔（#384）', () => {
 	it('點流程檔打開 App、殼讀不到（例：iCloud 還沒下載又沒網路）：說打不開，不悄悄開上次那支', async () => {
 		const drafts = fakeDraftStore();
