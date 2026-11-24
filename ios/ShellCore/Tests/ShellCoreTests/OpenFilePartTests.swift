@@ -51,6 +51,22 @@ struct OpenFilePartTests {
         #expect(try await part.handle(name: "takeOpenedFile", body: nil) == nil)
     }
 
+    @Test func 分享選單給的副本_拿過或被新的換掉就刪掉_原地打開的不刪() async throws {
+        // 副本在 App 自己的地方（Documents/Inbox、暫存資料夾），不刪會一直堆著、被備份
+        let part = OpenFilePart()
+        let replaced = handedFile("舊的.cheer", Data([1]))
+        let copy = handedFile("新的.cheer", Data([2]))
+        part.handOver(replaced)
+        part.handOver(copy)
+        #expect(!FileManager.default.fileExists(atPath: replaced.path))
+        _ = try await part.handle(name: "takeOpenedFile", body: nil)
+        #expect(!FileManager.default.fileExists(atPath: copy.path))
+        let original = handedFile("全國賽.cheer")
+        part.handOver(original, inPlace: true)
+        _ = try await part.handle(name: "takeOpenedFile", body: nil)
+        #expect(FileManager.default.fileExists(atPath: original.path))
+    }
+
     @Test func 開啟流程檔_選了回那個檔_按取消回null() async throws {
         var picked: URL? = handedFile("全國賽.zip")
         let part = OpenFilePart(pick: { picked }, places: .forScenario(folder: picked!.deletingLastPathComponent()))

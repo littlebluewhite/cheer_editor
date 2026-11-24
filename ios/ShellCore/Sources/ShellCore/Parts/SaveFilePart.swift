@@ -1,7 +1,7 @@
 // 存檔蓋回原本的檔、「傳給別人」（#385，情境 bridge-scenarios/current/saveFile.json）。
 // - 存檔（saveFlowFile）：網頁給「存到哪」（target：殼給過的書籤，base64）就蓋回那個檔；沒給、書籤找不到檔、寫不進去，就問存到哪
 //   （askWhere：App 叫出系統的存檔畫面，存好回那個檔的網址；按取消 nil），回新的書籤和檔名。按取消回 null。
-//   書籤殼不留：網頁跟草稿一起記（小設定），App 關掉再開照樣交回來。書籤舊了（檔搬過）回新的。
+//   書籤殼不留：網頁跟草稿一起記（小設定），App 關掉再開照樣交回來。蓋回後每次都回新的書籤（整個換上的是新的檔）。
 // - 傳給別人（shareFlowFile）：叫出分享選單送那個檔（.zip），回有沒有送出。button 是按的那顆鈕（iPad 的分享選單從那裡跳出來）。
 // 「檔案」點進來、「開啟流程檔」選的檔，書籤是 OpenFilePart 交檔時一起給的；分享選單給的副本沒有。
 import Foundation
@@ -48,7 +48,7 @@ public struct FilePlaces: Sendable {
                     // 只蓋掉存在的檔：檔被刪了就不在原地方重建一個，改問存到哪
                     result = Result {
                         guard FileManager.default.fileExists(atPath: at.path) else { throw CocoaError(.fileNoSuchFile) }
-                        try bytes.write(to: at)
+                        try replace(at, with: bytes)
                     }
                 }
                 if let failure { throw failure }
@@ -56,6 +56,21 @@ public struct FilePlaces: Sendable {
             }.value
         }
     )
+}
+
+/// 蓋回原檔（#385 審查）：先在 App 自己的暫存資料夾寫好整份，再整個換上（replaceItemAt），寫到一半失敗（空間不夠、App 被關掉）原檔不變。
+/// 換上失敗（推論：別家的檔案提供者不給換）而整份已經寫好了（空間夠）才退回直接寫進原檔。
+private func replace(_ url: URL, with bytes: Data) throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("save-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let staged = folder.appendingPathComponent(url.lastPathComponent)
+    try bytes.write(to: staged)
+    do {
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: staged)
+    } catch {
+        try bytes.write(to: url)
+    }
 }
 
 enum SaveFileError: Error { case badBody }
@@ -89,7 +104,8 @@ public final class SaveFilePart: BridgePart {
         if case .object(let o) = body, case .string(let target)? = o["target"],
            let mark = Data(base64Encoded: target), let found = places.find(mark),
            (try? await places.write(bytes, found.url)) != nil {
-            let fresh = found.stale ? places.remember(found.url)?.base64EncodedString() ?? target : target
+            // 蓋回是整個換上新的檔：每次都記一份新的書籤（推論：舊的照路徑還找得回，只是會變舊）
+            let fresh = places.remember(found.url)?.base64EncodedString() ?? target
             return ["target": .string(fresh), "name": .string(found.url.lastPathComponent)]
         }
         guard let url = await askWhere(fileName, bytes) else { return nil }
