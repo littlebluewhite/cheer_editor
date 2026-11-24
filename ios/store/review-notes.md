@@ -26,8 +26,10 @@ WHAT THE NATIVE APP ADDS (beyond the website)
 - Reads the current audio output; each speaker (e.g. a Bluetooth speaker) keeps its own latency offset ("..." next to the play button → "Latency offset"). Playback stops when a Bluetooth speaker or headphones disconnect.
 - Lock screen / Control Center play and pause; music keeps playing with the screen locked.
 - "Print" on the 8-count sheet and practice tables uses the system print sheet (Command-P with a keyboard); Share in the print sheet saves a PDF.
-- Text follows the system Text Size setting.
 The app downloads updated web screens (HTML/JS/CSS) from our own website (littlebluewhite.com) to fix and adjust the interface. These updates do not change the app's purpose or add features that would need review; native code changes always ship as a new App Store version.
+
+SHARING AND REPORTING
+Sharing creates a private, unlisted link that only people the author sends it to can open. There is no public feed, search, or browsing of other users' routines, and no messaging between users. To report content, contact <回報用的信箱>.
 
 ACCOUNT DELETION
 My account (tap your name at the top right of the home screen → "My account") → "Request account deletion". This really deactivates the account at once: every device is signed out and the account cannot sign in again; the administrator deletes it within 30 days. Please try this button last, or use the second demo account: <第二個審查帳號：在 App Store Connect 備註寫 email，密碼另外給，或不給第二個就刪掉這句>. We will restore the demo account after review.
@@ -44,8 +46,9 @@ Support page: https://littlebluewhite.com/support/
 - **這是什麼**：教練排競技啦啦隊流程的工具；免費、沒有 App 內購買、沒有廣告和分析。
 - **裝置**：iPad 請橫著拿，只有橫拿能編；直拿打開流程只有「請把 iPad 轉成橫的」和「看八拍表」「去練習」。iPhone 是檢視模式加記成功率。
 - **登入不是必要的**：不登入用本機流程。帳號由管理員建立（沒有自己註冊），多雲端流程、分享、一起改。審查帳號登入後，首頁「我的流程」有一支 `<雲端流程的名字>`（假名、合成的節拍聲）。
-- **App 多做的**：資料存在 App 裡、點圖示回上次那支；「檔案」點 .cheer 原地打開、存檔蓋回原檔，分享選單交來的是副本、第一次存檔問存到哪，「開啟流程檔」叫出系統的選檔畫面，「傳給別人」；每個喇叭各記一個延遲校正、斷線就停；鎖定畫面播放鍵、鎖螢幕繼續播；「列印」用系統的列印畫面（⌘P），「分享」存 PDF；字跟著「文字大小」。（沒寫自動填密碼：真機還沒驗，#401；驗過再加）
+- **App 多做的**：資料存在 App 裡、點圖示回上次那支；「檔案」點 .cheer 原地打開、存檔蓋回原檔，分享選單交來的是副本、第一次存檔問存到哪，「開啟流程檔」叫出系統的選檔畫面，「傳給別人」；每個喇叭各記一個延遲校正、斷線就停；鎖定畫面播放鍵、鎖螢幕繼續播；「列印」用系統的列印畫面（⌘P），「分享」存 PDF。（沒寫「字跟著文字大小」：真機試過字沒變大，#397。沒寫自動填密碼：真機還沒驗，#401；驗過再加）
 - **網頁畫面從自己的網站更新**（ADR 0025），App 的用途、功能不變；殼的程式改了一定出新版送審。
+- **分享和檢舉**：分享是不公開的連結，只有作者傳給的人打得開；沒有公開列表、搜尋、逛別人的流程，也沒有使用者互傳訊息。要檢舉內容請寫信到 `<回報用的信箱>`。（規則 1.2：網站主人選先不做檢舉、封鎖按鈕，被退再補）
 - **刪除帳號**：「我的帳號」→「要求刪除帳號」會真的停用（每台登出、不能登入），管理員 30 天內刪。請最後才試，或用第二個審查帳號；審完管理員按「恢復」（#325）。
 - **範例檔**：要不要另外給檔案的網址，網站主人決定。
 
@@ -62,6 +65,8 @@ Support page: https://littlebluewhite.com/support/
 | 從自己的網站更新網頁畫面 | `ios/README.md`「殼自己更新網頁」、ADR 0025 |
 | 要求刪除帳號真的停用、30 天內刪、恢復 | #325；使用說明 4.13 |
 | 英文按鈕名 | `messages/en.json`：`home_login`、`account_title`、`account_request_delete`、`editor_open_file`、`editor_save`、`editor_send_to_others`、`editor_menu`、`editor_latency`、`print_print` |
+| 分享是不公開的連結、沒有公開列表和搜尋 | `[NEEDS SOURCE]`：還沒在程式裡查過，送出前要確認 |
+| 回報用的信箱 | `[NEEDS SOURCE]`：網站主人填，不寫進 repo |
 | 審查帳號的雲端流程名字 | `[NEEDS SOURCE]`：網站主人傳上雲端後填（建議用檔裡的「示範流程」） |
 | 「My routines」 | `messages/en.json` 的 `home_mine` |
 | 雲端流程裡是假名、合成的音樂 | `review-sample.cheer`（`src/lib/store-sample.ts` 產生）；網站主人要把它「傳上雲端」到審查帳號 |
