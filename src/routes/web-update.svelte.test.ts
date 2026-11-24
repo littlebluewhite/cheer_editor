@@ -4,7 +4,10 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { appShell } from '#lib/app-shell.js';
 import { playScenario, scenario, scenarioShell } from '#lib/scenario-shell.js';
-import { editorPage, fakeDraftStore, fakeHost, flush, menuItem } from '#lib/test-fakes.js';
+import { createFlow, writeFlowFile } from '#lib/core';
+import type { Shell } from '#lib/host.js';
+import { flowOf } from '#lib/test-flows.js';
+import { editorPage, fakeDraftStore, fakeHost, fakeSettings, flush, menuItem } from '#lib/test-fakes.js';
 import { SETTLE_MS } from '#lib/web-update.js';
 import Page from './+page.svelte';
 
@@ -93,5 +96,36 @@ describe('App：殼自己更新網頁', () => {
 		await flush();
 		await settle();
 		fake.done();
+	});
+
+	it('打開 App 回上次那支還沒開好（#379）：新網頁下載好了也不換，不在開到一半時重新載入', async () => {
+		sessionStorage.setItem('cheer-editor:webBundleReady', '1');
+		const sent: string[] = [];
+		const shell: Shell = {
+			inApp: true,
+			can: (feature) => feature === 'webUpdate' || feature === 'settings',
+			send: (name) => (sent.push(name), Promise.resolve(true)),
+			on: () => () => {}
+		};
+		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'n1' });
+		fakeHost({ shell, settings });
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } })), {}));
+		// 草稿讀很久（低耗電的 iPhone）：超過換網頁要等的時間
+		let release = () => {};
+		const load = drafts.store.load.bind(drafts.store);
+		drafts.store.load = (id) => new Promise((ok) => (release = () => ok(load(id))));
+		const { editor, props } = editorPage(null, { draftStore: drafts.store });
+		render(Page, props);
+		await flush();
+		expect(editor.file.reopening).toBe(true);
+		await settle();
+		expect(sent, '還在回上次那支，不換').not.toContain('useNewWebBundle');
+		release();
+		await flush();
+		await flush();
+		expect(editor.session.flow?.name).toBe('全國賽');
+		await settle();
+		expect(sent).not.toContain('useNewWebBundle');
 	});
 });
