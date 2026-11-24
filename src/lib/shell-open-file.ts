@@ -21,13 +21,9 @@ function fileOf(reply: unknown): HandedFile | null {
 	return { file: new File([Uint8Array.fromBase64(bytes)], name), target: typeof target === 'string' ? target : null };
 }
 
-/** 拿殼收著的那個流程檔（從「檔案」、分享選單交給 App 的）；沒有、殼出錯是 null。 */
+/** 拿殼收著的那個流程檔（從「檔案」、分享選單交給 App 的）；沒有是 null。殼讀不到那個檔（例：iCloud 上的檔下載不了）會丟錯，跟沒有分開。 */
 export async function takeOpenedFile(shell: Shell): Promise<HandedFile | null> {
-	try {
-		return fileOf(await shell.send('takeOpenedFile'));
-	} catch {
-		return null;
-	}
+	return fileOf(await shell.send('takeOpenedFile'));
 }
 
 /** App 裡的「開啟流程檔」：請殼叫出選檔畫面。按取消回 null。存檔薄層用殼給的書籤建（createSaver），存檔蓋回選的那個檔（#385）。 */

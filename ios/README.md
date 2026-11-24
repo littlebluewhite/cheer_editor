@@ -282,7 +282,7 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 殼不拆檔、不看內容，只把檔名和位元組（base64）交給網頁；網頁照開檔的規則打開（拆兩層、錯誤訊息、有沒存的修改先問，`src/lib/flow-file.svelte.ts`）。殼：`ShellCore/Sources/ShellCore/Parts/OpenFilePart.swift`（`openFile`）、`App/Bridge/AppOpenFile.swift`、`SceneDelegate.swift`。網頁：`src/lib/shell-open-file.ts`。說的話：`bridge-scenarios/current/openFile.json`。
 
-- **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存檔蓋回它，下一節），分享選單給的是副本（`UIOpenURLContext.options.openInPlace` 分得出來）。
+- **型別**（`Info.plist`）：`.cheer` 是自己的型別 `com.littlebluewhite.cheereditor.flow`（Owner），conform 到 `public.data`、`public.content`，不 conform 到 `public.zip-archive`；`public.zip-archive` 宣告成 Alternate（分享選單才有 App；「檔案」點 `.zip` 照樣被系統解開）。`LSSupportsOpeningDocumentsInPlace` 開著：「檔案」點進來的是原檔（存檔蓋回它，下一節），分享選單給的是副本（`UIOpenURLContext.options.openInPlace` 分得出來）。副本在 App 自己的地方（`Documents/Inbox/`、暫存資料夾）：網頁拿過、還沒拿就被新的換掉，殼就刪掉，不一直堆著被備份；別的地方的不刪。
 - **「檔案」點、分享選單交來的**：`SceneDelegate` 收到網址（App 沒開著是 `willConnectTo` 的 `urlContexts`，開著是 `openURLContexts`）交給 `OpenFilePart.handOver`：殼收著、說 `fileOpened`，網頁拿（`takeOpenedFile`）。拿過就沒了，重新載入不會又打開；網頁還沒拿又交一個，給最後那個。App 剛打開時網頁一開始就先拿，拿到了就開它，不開上次那支（上次那支的草稿還在）。讀檔用 security-scoped 加 `NSFileCoordinator`，不在主執行緒上讀。
 - **「開啟流程檔」**：網頁 `pickFlowFile`，殼叫出系統的選檔畫面（`UIDocumentPickerViewController`，只選得到 `.cheer`、`.zip`，`asCopy: false` 原地打開），按取消回 null。沒用 iOS 18.4 的 `WKUIDelegate` 選檔（`runOpenPanelWith`）：它會連段設定選音樂檔的 `<input type="file">` 一起接走，殼分不出是哪一個欄位、篩不了型別，也進不了情境檔。
 - **開著雲端流程、還有沒送到的步**時交來一個檔：不開（換掉那些步就不見了；回首頁有問的框，這條路沒有），提示「還有 N 步沒送到雲端：送到了再打開「檔名」一次」。殼已經把檔交出去了，要再點一次。
@@ -299,7 +299,7 @@ App 裡的草稿不存在網頁的 IndexedDB，存在殼：`Application Support/
 
 殼：`ShellCore/Sources/ShellCore/Parts/SaveFilePart.swift`（`saveFile`；`FilePlaces` 是記書籤、找回、寫檔）、`App/Bridge/AppSaveFile.swift`。網頁：`src/lib/shell-save-file.ts`，殼會 `saveFile` 才換（`browserAdapters` 的 `createSaver`、`download`）。說的話：`bridge-scenarios/current/saveFile.json`。
 
-- **存檔蓋回原本的檔**：原地打開的檔（「檔案」點的、「開啟流程檔」選的）殼交檔時一起給書籤（`takeOpenedFile`／`pickFlowFile` 回的 `target`，base64）。網頁存檔時交回書籤（`saveFlowFile`），殼找回那個檔，用 `NSFileCoordinator`（`.forReplacing`）原地寫（不是 `.atomic` 換一個新檔）；檔被改名、搬走照樣找得到（書籤舊了回新的）。iOS 沒有 `.withSecurityScope`：先 `startAccessingSecurityScopedResource` 再用預設的選項記。
+- **存檔蓋回原本的檔**：原地打開的檔（「檔案」點的、「開啟流程檔」選的）殼交檔時一起給書籤（`takeOpenedFile`／`pickFlowFile` 回的 `target`，base64）。網頁存檔時交回書籤（`saveFlowFile`），殼找回那個檔，用 `NSFileCoordinator`（`.forReplacing`）蓋回：先在 App 的暫存資料夾寫好整份，再整個換上（`FileManager.replaceItemAt`），寫到一半失敗（空間不夠、App 被關掉）原檔不變；換不上（推論：別家的檔案提供者不給換）而整份寫好了才退回直接寫進原檔。換上的是新的檔：每次蓋回都回一份新的書籤（推論：舊書籤照路徑還找得回，只是會變舊；沒在真機上驗）。**真機、iCloud Drive、別家的檔案提供者上換不換得上沒驗到**（Mac 上的 `swift test` 沒有 iOS 的 sandbox）。檔被改名、搬走照樣找得到（書籤舊了回新的）。iOS 沒有 `.withSecurityScope`：先 `startAccessingSecurityScopedResource` 再用預設的選項記。
 - **新的流程、分享選單交來的副本**：沒有書籤，第一次存檔殼問存到哪：暫存資料夾寫「流程名.cheer」，叫出系統的存檔畫面（`UIDocumentPickerViewController(forExporting:asCopy: false)`），系統搬過去，回那裡的網址記成書籤；之後都蓋回那裡。記的檔找不到、寫不進去（被刪了、沒權限）也改問存到哪，不說存檔失敗。按取消網頁當沒存。
 - **App 關掉再開也記得**：殼不留書籤，網頁跟草稿一起記在小設定 `cheer-editor:saveTo:<草稿 id>`（存檔後草稿 id 換了就搬過去，草稿丟了就刪掉；`src/lib/flow-file.svelte.ts` 的 `#rememberTarget`）。從最近的流程、上次那支打開時用它建存檔薄層。iPhone 選單裡的「存檔」走同一條路。
 - **傳給別人**（選單，只有 App；網頁版沒有是推論：iPad 的網頁存檔本來就是分享選單）：殼叫出分享選單（`UIActivityViewController`）送「流程名.zip」，內容跟存檔一樣；iPad 從「選單」鈕跳出來（選單收起來了）。不算存檔。iPhone、iPad 的 LINE 收 `.zip`（#364 真機）。

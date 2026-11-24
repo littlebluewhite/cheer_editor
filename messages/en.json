@@ -1561,6 +1561,7 @@
 	"file_download_unreachable": "Couldn't reach the server, so nothing was downloaded",
 	"file_unanswered": "There's still a question to answer: answer it before saving",
 	"file_draft_unreadable": "Can't read this draft",
+	"file_handed_unreadable": "Couldn't read the routine file handed to the app; try opening it again",
 	"file_saved_to": "Saved to “{name}”",
 	"file_shared": "Shared “{name}”",
 	"file_send_failed": "Couldn't send; please try again",

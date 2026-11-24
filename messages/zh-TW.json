@@ -1561,6 +1561,7 @@
 	"file_download_unreachable": "連不上伺服器，沒下載",
 	"file_unanswered": "還有問題沒回答：先回答了再存檔",
 	"file_draft_unreadable": "這份草稿讀不出來",
+	"file_handed_unreadable": "讀不到交給 App 的流程檔，再打開一次試試",
 	"file_saved_to": "已存到「{name}」",
 	"file_shared": "已分享「{name}」",
 	"file_send_failed": "傳不出去，請再試一次",

@@ -109,6 +109,8 @@ export class FlowFile {
 	#announced: string | null = null;
 	/** App 打開時正在回上次那支（#378）：還沒開好、也還沒確定不見了之前，頁面不先畫首頁。殼會存小設定才回（網頁版不回）。 */
 	#reopening = $state(host().shell.can(SETTINGS_FEATURE) && loadLastFlow() !== '');
+	/** 打開時讀草稿、開交來的檔（#384）：還沒做完時殼又交來檔，排在後面開。 */
+	#handing: Promise<unknown> = Promise.resolve();
 
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
@@ -152,13 +154,17 @@ export class FlowFile {
 			}
 		});
 		this.#announce();
-		void this.#checkDraft(reopen);
+		this.#handing = this.#checkDraft(reopen);
 		const stopHearing = host().shell.on('background', () => {
 			this.pageHidden();
 			this.#rememberLast();
 		});
-		// 從「檔案」、分享選單交給開著的 App 的流程檔（#384）：殼說一聲，拿來照開檔的規則打開（有沒存的修改先問）
-		const stopFiles = host().shell.on('fileOpened', () => void this.#openHandedFile());
+		// 從「檔案」、分享選單交給開著的 App 的流程檔（#384）：殼說一聲，拿來照開檔的規則打開（有沒存的修改先問）。
+		// 一個一個開：等打開時回上次那支、前一個交來的檔（可能還在問）開完了才拿，不蓋掉還在問的、也不被慢的蓋過
+		const stopFiles = host().shell.on('fileOpened', () => {
+			const open = () => this.#openHandedFile();
+			this.#handing = this.#handing.then(open, open);
+		});
 		return () => {
 			stopHearing();
 			stopFiles();
@@ -189,14 +195,16 @@ export class FlowFile {
 		// 第一次存（這支流程還沒有存檔薄層）：下載新檔時多說一句這個瀏覽器怎麼存；原本在不在檔案裡（從檔案開的）
 		const first = !this.#saver;
 		const hadFile = this.#onDisk;
-		this.#saver ??= adapters.createSaver();
+		const saver = (this.#saver ??= adapters.createSaver());
+		const draftId = this.#draftId;
 		// 存的這支流程有幾段找不到音樂（存的時候手上的音樂）
 		const missing = music.missingSegmentIds.length;
 		try {
 			const fileName = flowFileName(f.name);
 			const bytes = writeFlowFile(f, music.bytes(f));
-			const outcome = await this.#saver.save(bytes, fileName);
-			if (outcome === 'cancelled') return;
+			const outcome = await saver.save(bytes, fileName);
+			// 存好前換了流程（App 裡存的時候從「檔案」交來別的檔，#385）：存好的是原本那支，不動換上來的這支
+			if (outcome === 'cancelled' || this.#saver !== saver || this.#draftId !== draftId) return;
 			session.markSaved(f);
 			this.#onDisk = true;
 			this.#fileBytes = bytes;
@@ -209,7 +217,7 @@ export class FlowFile {
 			this.#announce();
 			this.#saveDraftLater();
 			// App 裡沒有電腦的 Chrome、Edge 可以換（接了觸控板的 iPad 也是），跟觸控螢幕一樣只說原本的檔沒改（#392）
-			const saved = savedText(outcome, this.#saver.fileName ?? fileName, first, hadFile, !!this.#saver.touch || host().shell.inApp);
+			const saved = savedText(outcome, saver.fileName ?? fileName, first, hadFile, !!saver.touch || host().shell.inApp);
 			session.notice = missing
 				? joinNotes([saved, (missing === 1 ? m.file_saved_missing_audio_one : m.file_saved_missing_audio)({ count: missing })])
 				: saved;
@@ -273,15 +281,26 @@ export class FlowFile {
 		} catch {
 			picked = null;
 		}
-		if (picked) await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		// 剛答應丟掉修改只算這次選檔：按取消、選的檔打不開、草稿那題按取消，之後開檔（App 裡從「檔案」交來的，#384）照樣先問
+		try {
+			if (picked) await this.#openBytes(new Uint8Array(await picked.file.arrayBuffer()), picked.file.name, picked.saver);
+		} finally {
+			this.#openApproved = false;
+		}
 	}
 
 	/**
 	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
 	 * saver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。draftId：這支流程的草稿 id（沒給就照檔案算）。
-	 * 另一個分頁正在編這支流程就不開，說原因。
+	 * 另一個分頁正在編這支流程就不開，說原因。blocked：換流程前最後再看一次，回 true 就不開（殼交來的檔，#384）。
 	 */
-	async #openBytes(bytes: Uint8Array, fileName: string | null, saver: FileSaver | null = null, draftId = fileDraftId(bytes)): Promise<void> {
+	async #openBytes(
+		bytes: Uint8Array,
+		fileName: string | null,
+		saver: FileSaver | null = null,
+		draftId = fileDraftId(bytes),
+		blocked?: () => boolean
+	): Promise<void> {
 		const session = this.#editor.session;
 		const r = readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
@@ -304,12 +323,13 @@ export class FlowFile {
 				});
 				this.#draftAsk = null;
 				if (choice === 'cancel') return;
-				// 救回修改：存檔照樣蓋回這個檔（#385）
-				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver, draftId);
+				// 救回修改：App 裡存檔照樣蓋回這個檔（殼給的書籤，#385）；電腦上的 Chrome、Edge 照舊第一次存檔問存到哪
+				if (choice === 'draft') return this.#openBytes(changed.bytes, null, saver?.remembered ? saver : null, draftId, blocked);
 			}
 		}
 		// 檔案裡的音樂解碼好（這個瀏覽器解不開的標成壞的），換流程時換上
 		const music = await this.#editor.readMusic(r.audio);
+		if (blocked?.()) return;
 		const approved = this.#openApproved;
 		this.#openApproved = false;
 		this.#unlessUnsaved(true, approved, () => {
@@ -1003,15 +1023,38 @@ export class FlowFile {
 	 */
 	async #openHandedFile(): Promise<boolean> {
 		if (!host().shell.can(OPEN_FILE_FEATURE)) return false;
-		const handed = await takeOpenedFile(host().shell);
+		let handed;
+		try {
+			handed = await takeOpenedFile(host().shell);
+		} catch {
+			// 殼讀不到交來的檔：說打不開，不當作沒交檔（App 剛打開時不改開上次那支）
+			this.#reopening = false;
+			if (this.#editor.session.flow) this.#editor.session.notice = m.file_handed_unreadable();
+			else this.#openError = m.file_handed_unreadable();
+			return true;
+		}
 		if (!handed) return false;
 		const { file, target } = handed;
 		this.#reopening = false;
+		// 拿到檔時、換流程前（解碼音樂要等一下）各看一次：沒按鈕讓欄位失去焦點，打了還沒送出的字先送出（之後照「開別支」先問）；
 		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次
-		const unsent = this.cloud?.unsent ?? 0;
-		if (unsent) this.#editor.session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
+		const blocked = () => {
+			const { session, adapters } = this.#editor;
+			if (session.flow) adapters.pendingInput.flush();
+			const unsent = this.cloud?.unsent ?? 0;
+			if (unsent) session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
+			return unsent > 0;
+		};
 		// 「檔案」點的原檔：存檔蓋回它（#385）
-		else await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, target ? this.#editor.adapters.createSaver(target) : null);
+		const open = async () => {
+			const saver = target ? this.#editor.adapters.createSaver(target) : null;
+			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, blocked);
+		};
+		// 全上表改過格子還開著：跟切頁一樣先問，丟掉才開（按取消就不開）
+		const leave = this.#editor.session.practiceLeave;
+		if (blocked()) return true;
+		if (leave) leave(() => void open());
+		else await open();
 		return true;
 	}
 

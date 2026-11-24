@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { host } from '#lib/host.js';
 	import '../app.css';
@@ -16,6 +19,12 @@
 	onMount(() => {
 		if (host().shell.inApp) host().shell.send('ready').catch(() => {});
 	});
+	// App：從「檔案」、分享選單交來流程檔時停在別頁（使用說明、帳號、登入…）：回編輯器，編輯器一開就拿那個檔打開（#384）
+	onMount(() =>
+		host().shell.on('fileOpened', () => {
+			if (page.route.id !== '/') void goto(resolve('/'));
+		})
+	);
 </script>
 
 {@render children()}
