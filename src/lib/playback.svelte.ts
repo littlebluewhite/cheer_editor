@@ -146,7 +146,7 @@ export class Playback implements SessionPlayback {
 		return this.#speaker.name;
 	}
 
-	/** 系統說的延遲（毫秒，App 裡殼讀的）；網頁版 0。 */
+	/** 系統說的延遲（毫秒，App 裡殼讀的，只給開發版那一行看，不扣）；網頁版 0。 */
 	get systemLatencyMs(): number {
 		return this.#speaker.systemLatencyMs;
 	}
@@ -156,9 +156,9 @@ export class Playback implements SessionPlayback {
 		return this.#speaker.debug;
 	}
 
-	/** 播放頭要比喇叭晚多少（毫秒）：系統說的延遲＋延遲校正（網頁版系統說的是 0）。 */
+	/** 播放頭要比喇叭晚多少（毫秒）：只有延遲校正。系統說的延遲不扣：內建喇叭扣了畫面反而更晚（#390）。 */
 	get #delayMs(): number {
-		return this.#speaker.systemLatencyMs + this.#speaker.latencyMs;
+		return this.#speaker.latencyMs;
 	}
 
 	/** 喇叭斷線（App 裡殼說藍牙喇叭、耳機斷了）就停下；回傳「不聽了」的函式。編輯頁一開始叫一次。 */

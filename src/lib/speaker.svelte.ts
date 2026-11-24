@@ -1,4 +1,4 @@
-// 喇叭和延遲（#388）：播放頭要扣多少。存在哪看 #lib/host.js 的 speaker：
+// 喇叭和延遲（#388）：播放頭只扣延遲校正（系統說的延遲不扣，#390）。存在哪看 #lib/host.js 的 speaker：
 // 網頁版只有延遲校正（存在小設定，認不出喇叭、系統說的延遲當 0）；App 裡殼告訴網頁現在是哪個喇叭、系統說的延遲、
 // 這個喇叭的延遲校正（#lib/shell-speaker.svelte.js）。±1000 毫秒的檢查在播放（setLatency），只管延遲校正。
 
@@ -7,7 +7,7 @@ import { loadLatencyMs, saveLatencyMs } from '#lib/local-settings.js';
 export interface Speaker {
 	/** 現在接的喇叭的名字；網頁版認不出，是 null。 */
 	readonly name: string | null;
-	/** 系統說的延遲（毫秒）；網頁版 0。 */
+	/** 系統說的延遲（毫秒，只給開發版那一行看，播放頭不扣）；網頁版 0。 */
 	readonly systemLatencyMs: number;
 	/** 這個喇叭的延遲校正（毫秒）。 */
 	readonly latencyMs: number;
