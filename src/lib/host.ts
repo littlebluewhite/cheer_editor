@@ -1,10 +1,11 @@
 // 網頁跑在哪裡（#373）：網頁版（瀏覽器）或 App（Swift 殼，ADR 0022）。兩邊不一樣、又不屬於編輯器的四樣收在這裡，換一處就全換：
-// 小設定存在哪、網站網址、「問殼」、離線存放和草稿存放怎麼建。
+// 小設定存在哪、網站網址、「問殼」、離線存放和草稿存放怎麼建、喇叭和延遲。
 // 網頁版是 browserHost；App 一開始照殼塞的那份換上殼的版本（swapHost），測試用 #lib/test-fakes.js 的 fakeHost 換假的。
 // 編輯器收的其他 adapter（連伺服器…）還是走 EditorAdapters；草稿存放由 browserAdapters 照這裡建。
 
 import { createIndexedDbDraftStore, type DraftStore } from '#lib/file/draft.js';
 import { createIndexedDbOfflineStore, type OfflineStore } from '#lib/offline-store.js';
+import { browserSpeaker, type Speaker } from '#lib/speaker.svelte.js';
 
 /** 小設定存放（#lib/local-settings.js 用）：一開始就要同步讀得到，改了馬上寫。存的是字串。 */
 export interface SettingsStore {
@@ -34,6 +35,8 @@ export interface Host {
 	createOfflineStore: () => OfflineStore;
 	/** 建一個草稿存放（編輯器建一個）。 */
 	createDraftStore: () => DraftStore;
+	/** 喇叭和延遲：播放頭扣多少（播放建一個；App 裡每次都是同一個，殼一開始就在聽換喇叭）。 */
+	speaker: () => Speaker;
 }
 
 /** 網頁版：瀏覽器的儲存（每次讀寫才碰 localStorage）、頁面自己的網址、不在 App 裡、IndexedDB（離線存放、草稿）。 */
@@ -51,7 +54,8 @@ export const browserHost: Host = {
 		on: () => () => {}
 	},
 	createOfflineStore: createIndexedDbOfflineStore,
-	createDraftStore: createIndexedDbDraftStore
+	createDraftStore: createIndexedDbDraftStore,
+	speaker: () => browserSpeaker()
 };
 
 let current: Host = browserHost;

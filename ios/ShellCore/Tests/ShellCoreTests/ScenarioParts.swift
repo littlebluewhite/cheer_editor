@@ -52,6 +52,10 @@ final class ScenarioShell {
         share: { name, _, _ in self.sharedFiles.append(name); return true },
         places: places)
 
+    // #388：假的喇叭（換喇叭照 route.script 一步一步來）
+    let route = FakeAudioRoute()
+    private(set) lazy var speaker = SpeakerPart(latencies: .forScenario(), outbox: outbox, read: { [route] in route.read() })
+
     // #389
     lazy var nowPlaying = NowPlayingPart(outbox: outbox, show: { _ in })
 
@@ -100,6 +104,9 @@ final class ScenarioShell {
             // #385
             saveFile,
 
+            // #388
+            speaker,
+
             // #389
             nowPlaying,
 
@@ -127,6 +134,9 @@ final class ScenarioShell {
             // #384：「檔案」點了 .cheer
             ("fileOpened", { self.openFile.handOver(handedFile("全國賽.cheer")) }),
 
+            // #388：照 route.script 換下一個喇叭
+            ("speakerChanged", { self.route.change() }),
+
             // #389
             ("remote", { self.nowPlaying.press(.togglePlayPause) }),
 
@@ -146,6 +156,9 @@ final class ScenarioShell {
             ("App 關掉再開：網頁交回記著的書籤，蓋回同一個檔", { _ = self.inFolder("全國賽.cheer") }),
             ("新的流程第一次存檔，存到哪按取消：回 null", { self.savesAt = nil }),
 
+            // #388：接上藍牙喇叭，再斷線
+            ("藍牙斷線就停", { self.route.script[1].1 = true }),
+
             // #393
 
             // #394：網站上放好新的一包（不用比這個殼新的殼）；放了要比這個殼新的殼的一包。都沒放：網站抓不到清單
@@ -153,6 +166,7 @@ final class ScenarioShell {
             ("雲端流程被擋：網站上的要比這個殼新的殼，不換", { self.webSite.site.publish(newFiles, minShellBuild: 2) }),
         ]
         setups = Dictionary(uniqueKeysWithValues: setupList)
+        route.part = speaker
     }
 
     /// 在 fileFolder 放一個流程檔（情境裡的那支「全國賽」），回它的網址。

@@ -36,6 +36,9 @@ enum ShellParts {
             // #385
             SaveFilePart.inApp(context),
 
+            // #388
+            SpeakerPart.inApp(outbox: context.outbox),
+
             // #389
             NowPlayingPart.onLockScreen(context.outbox),
 
