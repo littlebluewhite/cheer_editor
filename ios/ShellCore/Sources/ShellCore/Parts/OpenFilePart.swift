@@ -32,6 +32,7 @@ public final class OpenFilePart: BridgePart {
     /// 「檔案」、分享選單把一個檔交給 App：收著（網頁還沒拿又來一個，換成新的），跟網頁說一聲。
     /// inPlace：系統給的是原檔（UIOpenURLContext 的 openInPlace），存檔要蓋回它。
     public func handOver(_ url: URL, inPlace: Bool = false) {
+        if let old = held, !old.inPlace, old.url != url { Self.discardCopy(old.url) }
         held = (url, inPlace)
         outbox.emit("fileOpened", nil)
     }
@@ -48,9 +49,21 @@ public final class OpenFilePart: BridgePart {
             file = await pick().map { ($0, true) }
         }
         guard let (url, inPlace) = file else { return nil }
+        // 分享選單給的副本：讀過（讀不到也一樣）就刪，網頁拿過就不會再給
+        defer { if !inPlace { Self.discardCopy(url) } }
         var reply: [String: JSONValue] = ["name": .string(url.lastPathComponent), "bytes": .string(try await read(url).base64EncodedString())]
         if inPlace, let mark = places.remember(url) { reply["target"] = .string(mark.base64EncodedString()) }
         return .object(reply)
+    }
+
+    /// 刪掉分享選單給的副本（#384 審查）：只刪 App 自己地方的（Documents/Inbox、暫存資料夾），不刪會一直堆著、被備份。別的地方的不動。
+    nonisolated static func discardCopy(_ url: URL) {
+        let fm = FileManager.default
+        let own = [fm.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Inbox"), fm.temporaryDirectory]
+            .compactMap { $0?.resolvingSymlinksInPath().path }
+        let path = url.resolvingSymlinksInPath().path
+        guard own.contains(where: { path.hasPrefix($0 + "/") }) else { return }
+        try? fm.removeItem(at: url)
     }
 
     /// 讀原地打開的檔（「檔案」、選檔畫面給的是 security-scoped 網址；分享選單給的副本不是，照樣讀得到）。不在主執行緒上讀。
