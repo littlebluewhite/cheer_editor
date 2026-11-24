@@ -80,7 +80,7 @@ describe('存檔還沒好就換了流程（#385）', () => {
 		await settle();
 		editor.file.create(contest());
 		const saving = editor.file.save();
-		const opening = editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		const opening = editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
 		await settle();
 		if (editor.file.askingToOpen) await editor.file.answer('discard');
 		await opening;
@@ -156,7 +156,7 @@ describe('交檔時還有沒存的東西（#384）', () => {
 		const { editor, session } = testEditor(null, { pendingInput });
 		const disconnect = editor.file.connect();
 		await settle();
-		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		await editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
 		expect(session.unsaved).toBe(false);
 		pendingInput.pending = true;
 		pendingInput.onflush = () => session.change(flowOf(renameFlow(session.flow!, '練習二')));
@@ -173,7 +173,7 @@ describe('交檔時還有沒存的東西（#384）', () => {
 		const { editor, session } = testEditor(null);
 		const disconnect = editor.file.connect();
 		await settle();
-		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		await editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
 		const asked: (() => void)[] = [];
 		session.practiceLeave = (go) => void asked.push(go);
 		const file = { name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) };
@@ -262,7 +262,7 @@ describe('殼讀不到交來的檔（#384）', () => {
 		const { editor, session } = testEditor(null);
 		const disconnect = editor.file.connect();
 		await settle();
-		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		await editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
 		session.notice = '';
 		hand({ name: '全國賽.cheer', bytes: new Uint8Array() });
 		await settle();
