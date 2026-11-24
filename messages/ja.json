@@ -1560,6 +1560,7 @@
 	"file_download_unreachable": "サーバーに接続できず、ダウンロードしませんでした",
 	"file_unanswered": "まだ答えていない質問があります。答えてから保存してください",
 	"file_draft_unreadable": "この下書きは読み込めません",
+	"file_handed_unreadable": "アプリに渡されたルーティーンファイルを読み込めませんでした。もう一度開いてみてください",
 	"file_saved_to": "「{name}」に保存しました",
 	"file_shared": "「{name}」を共有しました",
 	"file_send_failed": "送れませんでした。もう一度お試しください",

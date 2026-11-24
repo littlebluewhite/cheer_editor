@@ -241,3 +241,33 @@ describe('選檔畫面按取消（#384）', () => {
 		disconnect();
 	});
 });
+
+describe('殼讀不到交來的檔（#384）', () => {
+	it('點流程檔打開 App、殼讀不到（例：iCloud 還沒下載又沒網路）：說打不開，不悄悄開上次那支', async () => {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(practice(), {}));
+		const { shell } = handShell({ name: '全國賽.cheer', bytes: new Uint8Array() }, { broken: true });
+		fakeHost({ shell, settings: fakeSettings({ 'cheer-editor:lastFlow': 'n1' }).settings });
+		const { editor, session } = testEditor(null, { draftStore: drafts.store });
+		const disconnect = editor.file.connect();
+		await settle();
+		expect(session.flow).toBeNull();
+		expect(editor.file.openError).not.toBe('');
+		disconnect();
+	});
+
+	it('App 開著時殼讀不到：說打不開，原本那支不動', async () => {
+		const { shell, hand } = handShell(null, { broken: true });
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null);
+		const disconnect = editor.file.connect();
+		await settle();
+		await editor.file.open(new File([writeFlowFile(practice(), {})], '練習.cheer'));
+		session.notice = '';
+		hand({ name: '全國賽.cheer', bytes: new Uint8Array() });
+		await settle();
+		expect(session.flow?.name).toBe('練習');
+		expect(session.notice).not.toBe('');
+		disconnect();
+	});
+});

@@ -1020,7 +1020,16 @@ export class FlowFile {
 	 */
 	async #openHandedFile(): Promise<boolean> {
 		if (!host().shell.can(OPEN_FILE_FEATURE)) return false;
-		const handed = await takeOpenedFile(host().shell);
+		let handed;
+		try {
+			handed = await takeOpenedFile(host().shell);
+		} catch {
+			// 殼讀不到交來的檔：說打不開，不當作沒交檔（App 剛打開時不改開上次那支）
+			this.#reopening = false;
+			if (this.#editor.session.flow) this.#editor.session.notice = m.file_handed_unreadable();
+			else this.#openError = m.file_handed_unreadable();
+			return true;
+		}
 		if (!handed) return false;
 		const { file, target } = handed;
 		this.#reopening = false;
