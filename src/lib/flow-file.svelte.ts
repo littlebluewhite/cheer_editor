@@ -22,7 +22,8 @@ import {
 	writeFlowFile,
 	type Attempt,
 	type AudioBytes,
-	type Flow
+	type Flow,
+	type ReadFlowFileResult
 } from '#lib/core';
 import { reasonText, whyText } from '#lib/reason-text.js';
 import { CloudSteps, withUnsent } from '#lib/cloud-steps.svelte.js';
@@ -293,16 +294,18 @@ export class FlowFile {
 	 * 打開流程檔的位元組。fileName = 從哪個檔開的（算已存）；null 是草稿救回來的，還算未存。
 	 * saver：存回那個檔的存檔薄層（沒有就第一次存檔時再建）。draftId：這支流程的草稿 id（沒給就照檔案算）。
 	 * 另一個分頁正在編這支流程就不開，說原因。blocked：換流程前最後再看一次，回 true 就不開（殼交來的檔，#384）。
+	 * read：已經拆過的（打開草稿時拆過一次，不再拆第二次，#379）。
 	 */
 	async #openBytes(
 		bytes: Uint8Array,
 		fileName: string | null,
 		saver: FileSaver | null = null,
 		draftId = fileDraftId(bytes),
-		blocked?: () => boolean
+		blocked?: () => boolean,
+		read?: ReadFlowFileResult
 	): Promise<void> {
 		const session = this.#editor.session;
-		const r = readFlowFile(bytes);
+		const r = read ?? readFlowFile(bytes);
 		const cannotOpen = (reason: string) => {
 			const message = m.file_cannot_open({ name: fileName ?? (r.kind === 'ok' ? r.flow.name : m.file_draft()), reason });
 			if (session.flow) session.notice = message;
@@ -982,10 +985,10 @@ export class FlowFile {
 		}
 		const r = draft && readFlowFile(draft.bytes);
 		if (!draft || !r || r.kind !== 'ok') return false;
-		const unchanged = fileDraftId(draft.bytes) === id;
+		const unchanged = isFileDraftId(draft.bytes, id);
 		// App 裡記著存到哪（#385）：存檔照樣蓋回那個檔
 		const target = loadSaveTarget(id);
-		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, target ? this.#editor.adapters.createSaver(target) : null, id);
+		await this.#openBytes(draft.bytes, unchanged ? flowFileName(r.flow.name) : null, target ? this.#editor.adapters.createSaver(target) : null, id, undefined, r);
 		return true;
 	}
 
@@ -1333,6 +1336,14 @@ function fileDraftId(bytes: Uint8Array): string {
 	let hash = 0x811c9dc5;
 	for (const b of bytes) hash = Math.imul(hash ^ b, 0x01000193);
 	return `f${bytes.length.toString(36)}-${(hash >>> 0).toString(36)}`;
+}
+
+/**
+ * 這份位元組就是草稿 id 那個檔（沒改過）嗎：跟 fileDraftId(bytes) === id 一樣，
+ * 只是 id 的開頭（f 加長度）對不上就不用整個檔算一次（回上次那支時少算幾十毫秒，#379）。
+ */
+function isFileDraftId(bytes: Uint8Array, id: string): boolean {
+	return id.startsWith(`f${bytes.length.toString(36)}-`) && fileDraftId(bytes) === id;
 }
 
 /** 草稿照存的時間排，最近的在前；沒記時間的（舊版編輯器存的）最舊。 */

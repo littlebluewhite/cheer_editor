@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 import { useShellIfInApp } from '#lib/app-shell.js';
 import { scenarioShell } from '#lib/scenario-shell.js';
-import { createFlow, writeFlowFile } from '#lib/core';
+import { createFlow, readFlowFile, writeFlowFile } from '#lib/core';
 import { cloudEditor, fakeDraftStore, fakeHost, fakeOfflineStore, fakeSettings, fakeShell, flush, testEditor } from '#lib/test-fakes.js';
 import { flowOf, libSample } from '#lib/test-flows.js';
 import { localDate } from '#lib/local-date.js';
@@ -134,6 +134,77 @@ describe('打開 App 回上次那支', () => {
 		goAway();
 		expect(saved.get('cheer-editor:lastFlow')).toBe('n1');
 		disconnect();
+	});
+});
+
+// 回上次那支時，草稿就是那個檔（沒改過）還是改過沒存（#379 不再整個檔算一次 id 也要一樣）
+describe('回上次那支：改過沒存的照樣算未存', () => {
+	const named = (name: string) => flowOf(createFlow({ name, field: { strips: 9, layout: 'vertical' } }));
+
+	/** 從檔案開過 name 那支（草稿 id 照檔案算），回傳它的草稿 id。 */
+	async function openedFromFile(drafts: ReturnType<typeof fakeDraftStore>, name: string): Promise<string> {
+		fakeHost({ shell: shellThatGoesAway().shell, settings: fakeSettings().settings });
+		const { editor } = testEditor(null, { draftStore: drafts.store });
+		const disconnect = editor.file.connect();
+		await flush();
+		await editor.file.open(new File([writeFlowFile(named(name), {}) as Uint8Array<ArrayBuffer>], `${name}.zip`));
+		await flush();
+		disconnect();
+		const id = [...drafts.all.keys()][0];
+		expect(id).toMatch(/^f/);
+		return id;
+	}
+
+	/** 關掉再開 App：上次那支是 id。 */
+	async function reopen(drafts: ReturnType<typeof fakeDraftStore>, id: string) {
+		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': id });
+		fakeHost({ shell: shellThatGoesAway().shell, settings });
+		const t = testEditor(null, { draftStore: drafts.store });
+		const disconnect = t.editor.file.connect();
+		onTestFinished(disconnect);
+		await flush();
+		await flush();
+		return t;
+	}
+
+	it('新建的（草稿 id 不是照檔案算的）：還算未存', async () => {
+		const drafts = fakeDraftStore();
+		await drafts.store.save('n1', writeFlowFile(named('全國賽'), {}));
+		const { session } = await reopen(drafts, 'n1');
+		expect(session.flow?.name).toBe('全國賽');
+		expect(session.unsaved).toBe(true);
+	});
+
+	it('從檔案開、沒改過：算存過的', async () => {
+		const drafts = fakeDraftStore();
+		const id = await openedFromFile(drafts, '全國賽');
+		const { session } = await reopen(drafts, id);
+		expect(session.flow?.name).toBe('全國賽');
+		expect(session.unsaved).toBe(false);
+	});
+
+	it('從檔案開、改過沒存（檔案一樣長）：還算未存', async () => {
+		const drafts = fakeDraftStore();
+		const id = await openedFromFile(drafts, '全國賽');
+		const opened = readFlowFile(drafts.all.get(id)!.bytes);
+		if (opened.kind !== 'ok') throw new Error('草稿打不開');
+		// 壓縮過的長度跟著內容變：挑一個改了名字還一樣長的
+		const length = drafts.all.get(id)!.bytes.length;
+		const name = [...'杯盃季隊組區市縣'].map((c) => `全國${c}`).find((n) => writeFlowFile({ ...opened.flow, name: n }, {}).length === length);
+		expect(name).toBeDefined();
+		await drafts.store.save(id, writeFlowFile({ ...opened.flow, name: name! }, {}));
+		const { session } = await reopen(drafts, id);
+		expect(session.flow?.name).toBe(name);
+		expect(session.unsaved).toBe(true);
+	});
+
+	it('從檔案開、改過沒存（檔案長度變了）：還算未存', async () => {
+		const drafts = fakeDraftStore();
+		const id = await openedFromFile(drafts, '全國賽');
+		await drafts.store.save(id, writeFlowFile(named('全國賽決賽'), {}));
+		const { session } = await reopen(drafts, id);
+		expect(session.flow?.name).toBe('全國賽決賽');
+		expect(session.unsaved).toBe(true);
 	});
 });
 
