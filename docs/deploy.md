@@ -370,9 +370,9 @@ npm run ios:release -- --no-upload   # 封存完就停
 跟規格的順序不一樣：git、凍的情境、網址這三個便宜的檢查先做，殼的測試排在建網頁後面（管子測試要用真的那包網頁）。
 
 - 指令自己不 commit、不推。平常網站主人跑；網站主人明講「出版」時，agent 可以在這台 Mac 代跑。**送審的按鈕不在指令裡**，網站主人在 App Store Connect 按。
-- ⚠️ **第 6 步（簽章的封存）和第 7 步（上傳）還沒真的跑過**（#396 只跑到不簽章的 Release 建置）。第一次真的出版時驗（#401）。上傳不行就用 `--no-upload`，再到 Xcode → Window → Organizer → 那一份 → Distribute App → App Store Connect 手動上傳，回來改這一節。
+- ✅ **第 6 步（簽章的封存）和第 7 步（上傳）2026-11-26 第一次真的跑，都成功**：上傳了 1.0（1747）（#401）。之後上傳不行，就用 `--no-upload`，再到 Xcode → Window → Organizer → 那一份 → Distribute App → App Store Connect 手動上傳。
 - 封存要專案有 Team（`DEVELOPMENT_TEAM`，#395）。
-- ⚠️ **第 6、7 步會改 Apple 帳號**：封存和上傳都帶 `-allowProvisioningUpdates`，`xcodebuild` 會在 Xcode 登入的帳號裡「create and update profiles, app IDs, and certificates」（`man xcodebuild`，docs/research/app-release.md）：可能建新的簽章憑證、描述檔，也可能改 App ID（例如照 entitlements 打開 Associated Domains）。#395 建殼時故意沒帶它；出版指令帶，是因為沒有它 `xcodebuild` 不會去帳號拿或建描述檔，自動簽章簽不出來（推論，還沒真的跑過）。想先看清楚會建什麼，先在 Xcode 用付費帳號建一次真機版（#395 留給網站主人的那步），再跑出版指令。
+- ⚠️ **第 6、7 步會改 Apple 帳號**：封存和上傳都帶 `-allowProvisioningUpdates`，`xcodebuild` 會在 Xcode 登入的帳號裡「create and update profiles, app IDs, and certificates」（`man xcodebuild`，docs/research/app-release.md）：可能建新的簽章憑證、描述檔，也可能改 App ID（例如照 entitlements 打開 Associated Domains）。#395 建殼時故意沒帶它；出版指令帶，是因為沒有它 `xcodebuild` 不會去帳號拿或建描述檔，自動簽章簽不出來（推論；2026-11-26 帶著它跑，簽章和上傳都成功，#401）。想先看清楚會建什麼，先在 Xcode 用付費帳號建一次真機版（#395 留給網站主人的那步），再跑出版指令。
 
 ### 版號
 
