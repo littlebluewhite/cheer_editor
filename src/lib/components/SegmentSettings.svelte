@@ -73,7 +73,7 @@
 	/** 音樂檔壞了（解不開）：不知道多長，不拿長度 0 去算、去提醒。 */
 	const broken = $derived(!!loadedAudio?.broken);
 	const audio = $derived(broken ? undefined : loadedAudio);
-	/** 音樂檔還在解碼（回上次那支先畫場地，#379）：還不知道多長，不能照音樂長度算、不能點波形放第一拍。 */
+	/** 音樂檔還在解碼（回上次那支先畫場地，#379）：還不知道多長，不能照音樂長度算、不能點波形或打秒數放第一拍。 */
 	const audioLoading = $derived(editor.music.loadingAudio(music?.audioId));
 	const audioName = $derived(flow.audio.find((a) => a.id === music?.audioId)?.name);
 	const otherAudio = $derived(flow.audio.filter((a) => a.id !== music?.audioId));
@@ -281,6 +281,7 @@
 							type="text"
 							inputmode="decimal"
 							value={music.firstBeatSec}
+							disabled={audioLoading}
 							{@attach numberField(m.segment_settings_first_beat(), 'firstBeatSec', () => music?.firstBeatSec)}
 						/>
 					</label>

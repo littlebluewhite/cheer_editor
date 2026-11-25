@@ -13,7 +13,7 @@ import {
 import { flowOf } from '#lib/test-flows.js';
 import { PEAKS_PER_SEC, type DecodedAudio } from '#lib/audio/decode.js';
 import { EditorSession } from '#lib/editor-session.svelte.js';
-import { testEditor } from '#lib/test-fakes.js';
+import { flush, testEditor } from '#lib/test-fakes.js';
 import TestSession from '#lib/TestSession.svelte';
 import SegmentSettings from './SegmentSettings.svelte';
 
@@ -311,6 +311,21 @@ describe('音樂段設定：音樂還在載入', () => {
 		await fireEvent.click(screen.getByRole('img', { name: '波形' }), { clientX: 28 });
 		expect(lastSegment(session).firstBeatSec).toBeCloseTo(1.4, 9);
 		expect((screen.getByRole('button', { name: '照音樂長度算' }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('第一拍的秒數也要等載入好才能打（codex 審查）：不知道音樂多長，60 秒的歌打得進 300 秒', async () => {
+		const flow = flowOf(loadSegmentAudio(musicFlow(), 's1', '歌.mp3'));
+		let finish = () => {};
+		const decode = () => new Promise<DecodedAudio>((ok) => (finish = () => ok(loaded(60))));
+		const { editor } = testEditor(flow, { decode });
+		const { music, decoded } = editor.musicLater({ a1: new Uint8Array(8) });
+		editor.switchMusic(music);
+		render(TestSession, { props: { editor, component: SegmentSettings, props: { segmentId: 's1', onclose: () => {} } } });
+		expect((screen.getByLabelText('第一拍（秒）') as HTMLInputElement).disabled).toBe(true);
+		finish();
+		await decoded;
+		await flush();
+		expect((screen.getByLabelText('第一拍（秒）') as HTMLInputElement).disabled).toBe(false);
 	});
 });
 
