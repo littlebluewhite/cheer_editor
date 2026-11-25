@@ -261,4 +261,15 @@ describe('雲端流程下載成流程檔', () => {
 		]);
 		expect(session.notice).toContain('測試.cheer');
 	});
+
+	it('存檔畫面裡改了名字（codex 審查）：提示寫存成的名字，不寫建議的', async () => {
+		const fake = filesShell();
+		fakeHost({ shell: fake.shell });
+		fake.askAs('改名.cheer');
+		const { editor, session } = await cloudEditor({}, { download: shellAskWhere(fake.shell) });
+		await editor.file.download();
+		expect(fake.saves()).toEqual([{ target: null, name: '測試.cheer' }]);
+		expect(session.notice).toContain('改名.cheer');
+		expect(session.notice).not.toContain('測試.cheer');
+	});
 });

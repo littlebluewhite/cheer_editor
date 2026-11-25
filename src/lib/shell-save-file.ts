@@ -4,7 +4,7 @@
 // - 傳給別人：殼叫出分享選單送「流程名.zip」（iPhone 的 LINE 不收 .cheer，#306、#364）。只有 App 有（網頁版在 iPad 存檔本來就是分享選單）。
 // - 雲端流程「下載成流程檔」：每次都問存到哪，存成 .cheer，不記。
 import type { Shell } from '#lib/host.js';
-import type { FileSaver, SaveOutcome } from '#lib/file/save.js';
+import type { FileSaver } from '#lib/file/save.js';
 
 /** 「問殼」can() 的名字：殼會存流程檔（蓋回原檔、問存到哪）、會叫出分享選單送流程檔。 */
 export const SAVE_FILE_FEATURE = 'saveFile';
@@ -44,9 +44,12 @@ export function shellSaver(shell: Shell, target: string | null): FileSaver {
 	};
 }
 
-/** App 裡雲端流程的「下載成流程檔」：每次都問存到哪，存成 .cheer，不記。 */
-export function shellAskWhere(shell: Shell): (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome> {
-	return async (bytes, fileName) => ((await saveInShell(shell, null, bytes, fileName)) ? 'saved' : 'cancelled');
+/** App 裡雲端流程的「下載成流程檔」：每次都問存到哪，存成 .cheer，不記。回存成的檔名（存檔畫面裡可以改名）。 */
+export function shellAskWhere(shell: Shell): (bytes: Uint8Array, fileName: string) => Promise<'cancelled' | { savedAs: string }> {
+	return async (bytes, fileName) => {
+		const saved = await saveInShell(shell, null, bytes, fileName);
+		return saved ? { savedAs: saved.name } : 'cancelled';
+	};
 }
 
 /** 「傳給別人」：殼叫出分享選單送這個檔（iPad 從 button 那裡跳出來），回有沒有送出。 */

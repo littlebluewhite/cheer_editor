@@ -41,7 +41,7 @@ import { host } from '#lib/host.js';
 import { loadLastFlow, loadSaveTarget, saveLastFlow, saveSaveTarget } from '#lib/local-settings.js';
 import { SETTINGS_FEATURE } from '#lib/shell-settings.js';
 import { OPEN_FILE_FEATURE, takeOpenedFile } from '#lib/shell-open-file.js';
-import { cheerFileName, SAVE_FILE_FEATURE, shareFlowFile } from '#lib/shell-save-file.js';
+import { SAVE_FILE_FEATURE, shareFlowFile } from '#lib/shell-save-file.js';
 import { m } from '#lib/paraglide/messages.js';
 
 /** 被收回回首頁時，黃條說的。 */
@@ -806,9 +806,9 @@ export class FlowFile {
 		}
 		try {
 			const outcome = await adapters.download(writeFlowFile(flow, audio), fileName);
-			// App 裡存成 .cheer（#385）
-			const saved = host().shell.can(SAVE_FILE_FEATURE) ? cheerFileName(fileName) : fileName;
-			if (outcome !== 'cancelled') session.notice = savedText(outcome, saved, false, false, false);
+			// App 裡寫殼存成的檔名（.cheer、存檔畫面裡可能改了名字，#385）
+			if (typeof outcome === 'object') session.notice = savedText('saved', outcome.savedAs, false, false, false);
+			else if (outcome !== 'cancelled') session.notice = savedText(outcome, fileName, false, false, false);
 		} catch {
 			session.notice = m.file_download_failed();
 		}

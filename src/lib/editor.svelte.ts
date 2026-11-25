@@ -35,8 +35,11 @@ export interface EditorAdapters {
 	createEngine: (getBuffer: (audioId: string) => AudioBuffer | undefined) => AudioEngine;
 	/** 存檔薄層，一支流程一個（記得存到哪個檔）。remembered：App 裡記著的存到哪（殼給的書籤，#385）。 */
 	createSaver: (remembered?: string) => FileSaver;
-	/** 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載；App 裡每次問存到哪（#385）。 */
-	download: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome>;
+	/**
+	 * 存成一個新的流程檔、不碰原本的檔（雲端流程「⤓ 下載」）：觸控螢幕開分享選單，其他下載；
+	 * App 裡每次問存到哪（#385），存好回存成的檔名（savedAs：存檔畫面裡可以改名）。
+	 */
+	download: (bytes: Uint8Array, fileName: string) => Promise<SaveOutcome | { savedAs: string }>;
 	/** 選流程檔、拿到存回它的存檔薄層（Chrome、Edge；App 裡請殼叫出選檔畫面，#384）；null 是瀏覽器不能（照舊用選檔欄位）。 */
 	pickFlowFile: (() => Promise<PickedFile | null>) | null;
 	/** 解碼音樂檔。 */
