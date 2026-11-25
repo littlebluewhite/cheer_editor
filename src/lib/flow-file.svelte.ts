@@ -336,8 +336,9 @@ export class FlowFile {
 		const later = musicLater ? this.#editor.musicLater(r.audio) : null;
 		const music = later ? later.music : await this.#editor.readMusic(r.audio);
 		if (blocked?.()) return;
-		const approved = this.#openApproved;
-		this.#openApproved = false;
+		// 按「開啟」答應的只算選檔畫面選到的：殼交來的檔（有 blocked）不拿走它，照樣先問（#384 審查）
+		const approved = !blocked && this.#openApproved;
+		if (!blocked) this.#openApproved = false;
 		this.#unlessUnsaved(true, approved, () => {
 			this.#start(r.flow, fileName === null ? 'draft' : 'file', draftId, music, saver);
 			// 從檔案開的：當下就把這個檔存成草稿，重新整理後首頁的最近的流程裡有它

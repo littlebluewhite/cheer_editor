@@ -242,6 +242,29 @@ describe('選檔畫面按取消（#384）', () => {
 	});
 });
 
+describe('選檔畫面還開著時從「檔案」交來檔（#384 審查）', () => {
+	it('答應丟掉修改、選檔畫面還沒回來就交來一個檔：交來的檔照樣先問，不拿走選檔那次的答應', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const picker = later<null>();
+		const { editor, session } = testEditor(null, { pickFlowFile: () => picker.promise });
+		const disconnect = editor.file.connect();
+		await settle();
+		editor.file.create(practice());
+		session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		let picking: Promise<void> | undefined;
+		expect(editor.file.mayChoose(() => (picking = editor.file.pick()))).toBe(false);
+		await editor.file.answer('discard');
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		expect(session.flow?.name).toBe('練習二');
+		picker.resolve(null);
+		await picking;
+		disconnect();
+	});
+});
+
 describe('選檔畫面選了打不開的檔（#384）', () => {
 	it('答應丟掉修改後選了不是流程檔的：之後從「檔案」交來的檔照樣先問', async () => {
 		const { shell, hand } = handShell();
