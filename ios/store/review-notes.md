@@ -18,7 +18,7 @@ DEVICES
 
 SIGN-IN IS OPTIONAL
 Without an account, everything works with routines stored on the device. An account (created by an administrator; there is no self sign-up) adds cloud routines, sharing and live co-editing.
-Demo account: the email and password are in the Sign-In Information fields. On the home screen tap "Sign in" (top right). After signing in, the home screen lists a cloud routine named "<雲端流程的名字>" under "My routines": fake athlete names (A–L style), synthesized beat music. Tap it, then press play.
+Demo account: the email and password are in the Sign-In Information fields. On the home screen tap "Sign in" (top right). After signing in, the home screen lists a cloud routine named "範例流程" (Chinese for "sample routine") under "Shared with me": fake athlete names (A–L style), synthesized beat music. Tap it, then press play.
 
 WHAT THE NATIVE APP ADDS (beyond the website)
 - Routines, drafts and settings are stored in the app; tapping the icon reopens the last routine.
@@ -44,7 +44,7 @@ Support page: https://littlebluewhite.com/support/
 
 - **這是什麼**：教練排競技啦啦隊流程的工具；免費、沒有 App 內購買、沒有廣告和分析。
 - **裝置**：iPad 請橫著拿，只有橫拿能編；直拿打開流程只有「請把 iPad 轉成橫的」和「看八拍表」「去練習」。iPhone 是檢視模式加記成功率。
-- **登入不是必要的**：不登入用本機流程。帳號由管理員建立（沒有自己註冊），多雲端流程、分享、一起改。審查帳號登入後，首頁「我的流程」有一支 `<雲端流程的名字>`（假名、合成的節拍聲）。
+- **登入不是必要的**：不登入用本機流程。帳號由管理員建立（沒有自己註冊），多雲端流程、分享、一起改。審查帳號登入後，首頁「分享給我的」有一支「範例流程」（假名、合成的節拍聲）。
 - **App 多做的**：資料存在 App 裡、點圖示回上次那支；「檔案」點 .cheer 原地打開、存檔蓋回原檔，分享選單交來的是副本、第一次存檔問存到哪，「開啟流程檔」叫出系統的選檔畫面，「傳給別人」；鎖定畫面播放鍵、鎖螢幕繼續播；「列印」用系統的列印畫面（⌘P），「分享」存 PDF。（沒寫「每個喇叭各記延遲校正、斷線就停」：藍牙真機還沒驗，#390；驗過再加。沒寫「字跟著文字大小」：真機試過字沒變大，#397。沒寫自動填密碼：真機還沒驗，#401；驗過再加）
 - **網頁畫面從自己的網站更新**（ADR 0025），App 的用途、功能不變；殼的程式改了一定出新版送審。
 - **分享和檢舉**：分享是不公開的連結，只有作者傳給的人打得開；沒有公開列表、搜尋、逛別人的流程，也沒有使用者互傳訊息。要檢舉內容請寫信到 `<回報用的信箱>`。（規則 1.2：網站主人選先不做檢舉、封鎖按鈕，被退再補）
@@ -59,13 +59,13 @@ Support page: https://littlebluewhite.com/support/
 | 沒有廣告、分析 | 隱私權政策頁（`src/routes/privacy/+page.svelte`） |
 | iPad 只有橫拿能編、直拿的畫面；iPhone 是檢視模式加記成功率 | 使用說明 1「開始前要知道」；直拿的 iPad 在模擬器上看到的（`editor_rotate_title`）。英文「Turn your iPad sideways」是 `messages/en.json` 的 `editor_rotate_title` |
 | 登入在首頁右上角、沒有自己註冊 | 使用說明 4.13「登入和帳號」 |
-| 「我的流程」 | 使用說明 4.13「雲端流程和本機流程」 |
-| 殼多做的事 | `ios/README.md` #376、#377、#378、#384、#385、#388、#389、#391 各節。**真機沒驗的**：「檔案」裡點檔存回原檔（#379）、藍牙斷線就停、延遲（#390） |
+| 「分享給我的」 | 使用說明 4.13「雲端流程和本機流程」 |
+| 殼多做的事 | `ios/README.md` #376、#377、#378、#384、#385、#388、#389、#391 各節。「檔案」裡點檔存回原檔、分享選單交來的副本：真機驗過（#386）。**真機沒驗的**：藍牙斷線就停、藍牙延遲（#390） |
 | 從自己的網站更新網頁畫面 | `ios/README.md`「殼自己更新網頁」、ADR 0025 |
 | 要求刪除帳號真的停用、30 天內刪、恢復 | #325；使用說明 4.13 |
 | 英文按鈕名 | `messages/en.json`：`home_login`、`account_title`、`account_request_delete`、`editor_open_file`、`editor_save`、`editor_send_to_others`、`editor_menu`、`editor_latency`、`print_print` |
 | 分享是不公開的連結、沒有公開列表和搜尋 | `[NEEDS SOURCE]`：還沒在程式裡查過，送出前要確認 |
 | 回報用的信箱 | `[NEEDS SOURCE]`：網站主人填，不寫進 repo |
 | 審查帳號的雲端流程名字 | `[NEEDS SOURCE]`：網站主人傳上雲端後填（建議用檔裡的「示範流程」） |
-| 「My routines」 | `messages/en.json` 的 `home_mine` |
+| 「Shared with me」 | `messages/en.json` 的 `home_shared` |
 | 雲端流程裡是假名、合成的音樂 | `review-sample.cheer`（`src/lib/store-sample.ts` 產生）；網站主人要把它「傳上雲端」到審查帳號 |
