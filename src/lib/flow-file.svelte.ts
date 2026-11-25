@@ -1064,24 +1064,25 @@ export class FlowFile {
 		const { file, target } = handed;
 		this.#reopening = false;
 		// 拿到檔時、換流程前（解碼音樂要等一下）各看一次：沒按鈕讓欄位失去焦點，打了還沒送出的字先送出（之後照「開別支」先問）；
-		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次
-		const blocked = () => {
+		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次。
+		// 全上表改過格子還開著（解碼時才改的也算）：跟切頁一樣先問，丟掉才從頭開（按取消就不開）；left：答應丟掉了，不再問
+		const blocked = (left: boolean) => {
 			const { session, adapters } = this.#editor;
 			if (session.flow) adapters.pendingInput.flush();
 			const unsent = this.cloud?.unsent ?? 0;
 			if (unsent) session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
-			return unsent > 0;
+			if (unsent > 0) return true;
+			const leave = !left && session.practiceLeave;
+			if (leave) leave(() => void open(true));
+			return !!leave;
 		};
 		// 「檔案」點的原檔：存檔蓋回它（#385）
-		const open = async () => {
+		const open = async (left: boolean) => {
 			const saver = target ? this.#editor.adapters.createSaver(target) : null;
-			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, blocked);
+			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, () => blocked(left));
 		};
-		// 全上表改過格子還開著：跟切頁一樣先問，丟掉才開（按取消就不開）
-		const leave = this.#editor.session.practiceLeave;
-		if (blocked()) return true;
-		if (leave) leave(() => void open());
-		else await open();
+		if (blocked(false)) return true;
+		await open(false);
 		// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
 		await this.#asked();
 		return true;

@@ -215,6 +215,34 @@ describe('交檔時還有沒存的東西（#384）', () => {
 		disconnect();
 	});
 
+	it('全上表沒改過、交來的檔還在解碼時改了格子：換流程前再問一次，丟掉才開', async () => {
+		const decoding = later<void>();
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null, {
+			decode: async () => {
+				await decoding.promise;
+				throw new Error('cannot decode');
+			}
+		});
+		const disconnect = editor.file.connect();
+		await settle();
+		await editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
+		hand({ name: '練習用.cheer', bytes: writeFlowFile(audioFlow(), { a1: new Uint8Array([7, 7]) }) });
+		await settle();
+		const asked: (() => void)[] = [];
+		session.practiceLeave = (go) => void asked.push(go);
+		decoding.resolve();
+		await settle();
+		expect(asked).toHaveLength(1);
+		expect(session.flow?.name).toBe('練習');
+		asked[0]();
+		await settle();
+		expect(asked).toHaveLength(1);
+		expect(session.flow?.name).toBe(audioFlow().name);
+		disconnect();
+	});
+
 	it('雲端流程：交來的檔還在解碼時又改了一步（還沒送到）：不換掉，沒送到的步不丟', async () => {
 		const decoding = later<void>();
 		const { shell, hand } = handShell();
