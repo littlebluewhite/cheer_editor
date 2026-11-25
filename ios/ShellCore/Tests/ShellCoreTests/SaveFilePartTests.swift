@@ -90,6 +90,20 @@ struct SaveFilePartTests {
         #expect(try await part.handle(name: "saveFlowFile", body: saveBody(target: nil, name: "新流程.cheer", bytes: Data([1]))) == nil)
     }
 
+    /// 暫存檔寫不了（例：空間不夠）：丟錯，網頁說存不了，不當作按取消（codex 審查）。
+    @Test func 存到哪和傳給別人_暫存檔寫不了_丟錯不當作取消() async throws {
+        let part = SaveFilePart(
+            askWhere: { _, _ in throw CocoaError(.fileWriteOutOfSpace) },
+            share: { _, _, _ in throw CocoaError(.fileWriteOutOfSpace) }
+        )
+        await #expect(throws: (any Error).self) {
+            try await part.handle(name: "saveFlowFile", body: saveBody(target: nil, name: "新流程.cheer", bytes: Data([1])))
+        }
+        await #expect(throws: (any Error).self) {
+            try await part.handle(name: "shareFlowFile", body: ["name": "全國賽.zip", "bytes": "AQI="])
+        }
+    }
+
     @Test func 檔案在別的地方改了名字_還是蓋回那個檔() async throws {
         let url = handedFile("全國賽.cheer", Data([1]))
         let opened = OpenFilePart(pick: { url })

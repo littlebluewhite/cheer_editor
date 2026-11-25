@@ -77,14 +77,15 @@ enum SaveFileError: Error { case badBody }
 
 @MainActor
 public final class SaveFilePart: BridgePart {
-    private let askWhere: @MainActor (String, Data) async -> URL?
-    private let share: @MainActor (String, Data, PrintButton?) async -> Bool
+    private let askWhere: @MainActor (String, Data) async throws -> URL?
+    private let share: @MainActor (String, Data, PrintButton?) async throws -> Bool
     private let places: FilePlaces
 
     /// askWhere：問存到哪（建議的檔名、位元組），存好回那個檔、取消回 nil。share：叫出分享選單送那個檔，回有沒有送出。
+    /// 兩個寫不了暫存檔（例：空間不夠）就丟錯：網頁說存不了、傳不出去，不當作按取消。
     public init(
-        askWhere: @escaping @MainActor (String, Data) async -> URL?,
-        share: @escaping @MainActor (String, Data, PrintButton?) async -> Bool = { _, _, _ in false },
+        askWhere: @escaping @MainActor (String, Data) async throws -> URL?,
+        share: @escaping @MainActor (String, Data, PrintButton?) async throws -> Bool = { _, _, _ in false },
         places: FilePlaces = .inPlace
     ) {
         self.askWhere = askWhere
@@ -99,7 +100,7 @@ public final class SaveFilePart: BridgePart {
         let fileName = try PartFiles.string(body, "name", or: SaveFileError.badBody)
         guard let bytes = Data(base64Encoded: try PartFiles.string(body, "bytes", or: SaveFileError.badBody)) else { throw SaveFileError.badBody }
         if name == "shareFlowFile" {
-            return .bool(await share(fileName, bytes, PrintPart.button(in: body)))
+            return .bool(try await share(fileName, bytes, PrintPart.button(in: body)))
         }
         if case .object(let o) = body, case .string(let target)? = o["target"],
            let mark = Data(base64Encoded: target), let found = places.find(mark),
@@ -108,7 +109,7 @@ public final class SaveFilePart: BridgePart {
             let fresh = places.remember(found.url)?.base64EncodedString() ?? target
             return ["target": .string(fresh), "name": .string(found.url.lastPathComponent)]
         }
-        guard let url = await askWhere(fileName, bytes) else { return nil }
+        guard let url = try await askWhere(fileName, bytes) else { return nil }
         return ["target": places.remember(url).map { .string($0.base64EncodedString()) } ?? .null, "name": .string(url.lastPathComponent)]
     }
 }
