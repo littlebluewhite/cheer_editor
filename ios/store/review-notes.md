@@ -24,17 +24,14 @@ WHAT THE NATIVE APP ADDS (beyond the website)
 - Routines, drafts and settings are stored in the app; tapping the icon reopens the last routine.
 - Opens routine files: tap a .cheer file in the Files app (it opens in place, and "Save" writes back to that file), or hand a .cheer/.zip to the app from the share sheet (e.g. LINE; this is a copy, so the first "Save" asks where to save). "Open routine file" uses the system document picker. "Send to others" (Menu) opens the share sheet.
 - Lock screen / Control Center play and pause; music keeps playing with the screen locked.
-- "Print" on the 8-count sheet and practice tables uses the system print sheet (Command-P with a keyboard); Share in the print sheet saves a PDF.
+- "Print" on the 8-count sheet and practice tables uses the system print sheet; Share in the print sheet saves a PDF.
 The app downloads updated web screens (HTML/JS/CSS) from our own website (littlebluewhite.com) to fix and adjust the interface. These updates do not change the app's purpose or add features that would need review; native code changes always ship as a new App Store version.
 
 SHARING AND REPORTING
-Sharing either adds a signed-in user by email, or creates an unlisted link: anyone who has the link can view the routine without signing in (view only; the author can turn the link off or replace it). There is no public feed, search, or browsing of other users' routines, and no messaging between users. To report content, contact <回報用的信箱>.
+Sharing either adds a signed-in user by email, or creates an unlisted link: anyone who has the link can view the routine without signing in (view only; the author can turn the link off or replace it). There is no public feed, search, or browsing of other users' routines, and no messaging between users. To report content, contact [REPORT EMAIL].
 
 ACCOUNT DELETION
-My account (tap your name at the top right of the home screen → "My account") → "Request account deletion". This really deactivates the account at once: every device is signed out and the account cannot sign in again; the administrator deletes it within 30 days. Please try this button last, or use the second demo account: <第二個審查帳號：在 App Store Connect 備註寫 email，密碼另外給，或不給第二個就刪掉這句>. We will restore the demo account after review.
-
-SAMPLE FILE
-If you would like to test opening a file without signing in, the same routine is available as a file: <放範例流程檔的網址，或刪掉這段>.
+My account (tap your name at the top right of the home screen → "My account") → "Request account deletion". This really deactivates the account at once: every device is signed out and the account cannot sign in again; the administrator deletes it within 30 days. Please try this button last. We will restore the demo account after review.
 
 CONTACT
 Support page: https://littlebluewhite.com/support/
