@@ -23,7 +23,7 @@ public struct AudioOutput: Equatable, Sendable {
 
     /// 斷線就停的：藍牙喇叭、耳機、有線耳機（AVAudioSession.Port 的 rawValue）。AirPlay 不算。
     var stopsWhenGone: Bool {
-        ["BluetoothA2DPOutput", "BluetoothLEOutput", "BluetoothHFP", "Headphones"].contains(portType)
+        ["BluetoothA2DPOutput", "BluetoothLE", "BluetoothHFP", "Headphones"].contains(portType)
     }
 }
 

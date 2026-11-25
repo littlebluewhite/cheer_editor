@@ -136,6 +136,14 @@ struct SpeakerPartTests {
         #expect(stops == [false, true, false, true, false, false, false, false])
     }
 
+    /// AVAudioSession.Port.bluetoothLE 的 rawValue 是 "BluetoothLE"（iOS 27.2 模擬器上印出來的，codex 審查）。
+    @Test func 藍牙LE斷線也叫網頁停() {
+        let s = Setup()
+        s.route.go(to: AudioRoute(output: AudioOutput(portType: "BluetoothLE", uid: "le", name: "耳機"), systemLatencyMs: 50))
+        s.route.go(to: AudioRoute(output: builtIn, systemLatencyMs: 10), oldDeviceUnavailable: true)
+        #expect(s.said.last?["body"]?["stop"] == true)
+    }
+
     @Test func 開發版多塞一個記號_上架版沒有() {
         #expect(Setup(debug: true).part.boot["speakerDebug"] == true)
         #expect(Setup().part.boot["speakerDebug"] == nil)
