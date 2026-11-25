@@ -12,6 +12,6 @@ struct GuidePipeTests {
         try await h.load("guide")
         let count = "return [...document.querySelectorAll('.app')].filter((e) => e.textContent.trim().startsWith('App 裡：')).length"
         try await h.waitUntil("看得到「App 裡：」的段落") { (try? await h.js(count)) as? Int ?? 0 > 0 }
-        #expect(try await h.js(count) as? Int == 8)
+        #expect(try await h.js(count) as? Int == 14)
     }
 }
