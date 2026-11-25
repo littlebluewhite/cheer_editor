@@ -873,6 +873,8 @@ export class FlowFile {
 		switching = true
 	) {
 		const editor = this.#editor;
+		// 換上了別支（例：選檔畫面選到的）：還在問的「丟掉修改」是問上一支的，收掉（交來的檔不卡在排隊）
+		if (this.#asking) this.#ask(null);
 		// 剛建好的不算未存（沒改過就換別的不用問），但不在檔案裡，照樣存草稿
 		// 草稿 id 先換：session 換流程時就跟別的分頁說正在編的是這支
 		this.#draftId = draftId;
@@ -1052,6 +1054,17 @@ export class FlowFile {
 	 */
 	async #openHandedFile(): Promise<boolean> {
 		if (!host().shell.can(OPEN_FILE_FEATURE)) return false;
+		// 殼還在讀（例：iCloud 下載中）就算在開了：殼交出去就不留著，這時換新網頁要再交一次
+		this.#handingFile = true;
+		try {
+			return await this.#takeHandedFile();
+		} finally {
+			this.#handingFile = false;
+		}
+	}
+
+	/** 跟殼拿交來的檔、打開（#openHandedFile）。 */
+	async #takeHandedFile(): Promise<boolean> {
 		let handed;
 		try {
 			handed = await takeOpenedFile(host().shell);
@@ -1067,31 +1080,28 @@ export class FlowFile {
 		this.#reopening = false;
 		// 拿到檔時、換流程前（解碼音樂要等一下）各看一次：沒按鈕讓欄位失去焦點，打了還沒送出的字先送出（之後照「開別支」先問）；
 		// 開著的雲端流程還有沒送到的步：換掉就不見了（回首頁會先問，這裡沒有那個框），先不開，送到了再點一次。
-		// 全上表改過格子還開著（解碼時才改的也算）：跟切頁一樣先問，丟掉才從頭開（按取消就不開）；left：答應丟掉了，不再問
-		const blocked = (left: boolean) => {
+		// 全上表改過格子還開著（解碼時才改的也算）：跟切頁一樣先問，丟掉才從頭開（按取消就不開）；left：答應丟掉的那張，那張不再問（又開了別張照樣問）
+		type Guard = (go: () => void) => void;
+		const blocked = (left: Guard | null) => {
 			const { session, adapters } = this.#editor;
 			if (session.flow) adapters.pendingInput.flush();
 			const unsent = this.cloud?.unsent ?? 0;
 			if (unsent) session.notice = (unsent === 1 ? m.file_open_after_unsent_one : m.file_open_after_unsent)({ n: unsent, name: file.name });
 			if (unsent > 0) return true;
-			const leave = !left && session.practiceLeave;
-			if (leave) leave(() => void open(true));
-			return !!leave;
+			const leave = session.practiceLeave;
+			if (!leave || leave === left) return false;
+			leave(() => void open(leave));
+			return true;
 		};
 		// 「檔案」點的原檔：存檔蓋回它（#385）
-		const open = async (left: boolean) => {
+		const open = async (left: Guard | null) => {
 			const saver = target ? this.#editor.adapters.createSaver(target) : null;
 			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, () => blocked(left));
 		};
-		if (blocked(false)) return true;
-		this.#handingFile = true;
-		try {
-			await open(false);
-			// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
-			await this.#asked();
-		} finally {
-			this.#handingFile = false;
-		}
+		if (blocked(null)) return true;
+		await open(null);
+		// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
+		await this.#asked();
 		return true;
 	}
 

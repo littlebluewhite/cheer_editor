@@ -243,6 +243,38 @@ describe('交檔時還有沒存的東西（#384）', () => {
 		disconnect();
 	});
 
+	it('丟掉一張全上表後重開、解碼時又開了另一張改了格子：那張也先問', async () => {
+		let decoding = later<void>();
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null, {
+			decode: async () => {
+				await decoding.promise;
+				throw new Error('cannot decode');
+			}
+		});
+		const disconnect = editor.file.connect();
+		await settle();
+		await editor.file.open(new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'));
+		hand({ name: '練習用.cheer', bytes: writeFlowFile(audioFlow(), { a1: new Uint8Array([7, 7]) }) });
+		await settle();
+		const first: (() => void)[] = [];
+		session.practiceLeave = (go) => void first.push(go);
+		decoding.resolve();
+		await settle();
+		decoding = later<void>();
+		session.practiceLeave = null;
+		first[0]();
+		await settle();
+		const second: (() => void)[] = [];
+		session.practiceLeave = (go) => void second.push(go);
+		decoding.resolve();
+		await settle();
+		expect(second).toHaveLength(1);
+		expect(session.flow?.name).toBe('練習');
+		disconnect();
+	});
+
 	it('雲端流程：交來的檔還在解碼時又改了一步（還沒送到）：不換掉，沒送到的步不丟', async () => {
 		const decoding = later<void>();
 		const { shell, hand } = handShell();
@@ -314,6 +346,51 @@ describe('選檔畫面還開著時從「檔案」交來檔（#384 審查）', ()
 		expect(session.flow?.name).toBe('練習二');
 		picker.resolve(null);
 		await picking;
+		disconnect();
+	});
+
+	it('交來的檔還在問、選檔畫面選到了檔：開選到的，收掉交來那一題，之後交來的照常開', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const picker = later<{ file: File; saver: ReturnType<typeof fakeSaver>['saver'] }>();
+		const { editor, session } = testEditor(null, { pickFlowFile: () => picker.promise });
+		const disconnect = editor.file.connect();
+		await settle();
+		editor.file.create(practice());
+		session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		let picking: Promise<void> | undefined;
+		editor.file.mayChoose(() => (picking = editor.file.pick()));
+		await editor.file.answer('discard');
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		picker.resolve({ file: new File([writeFlowFile(practice(), {}).slice()], '練習.cheer'), saver: fakeSaver().saver });
+		await picking;
+		await settle();
+		expect(session.flow?.name).toBe('練習');
+		expect(editor.file.asking).toBe(false);
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		disconnect();
+	});
+
+	it('殼還在讀交來的檔（例：iCloud 下載中）：已經算在開交來的檔', async () => {
+		const reading = later<null>();
+		const shell: Shell = {
+			inApp: true,
+			can: (feature) => feature === OPEN_FILE_FEATURE,
+			send: () => reading.promise,
+			on: () => () => {}
+		};
+		fakeHost({ shell });
+		const { editor } = testEditor(null);
+		const disconnect = editor.file.connect();
+		await flush();
+		expect(editor.file.handingFile).toBe(true);
+		reading.resolve(null);
+		await settle();
+		expect(editor.file.handingFile).toBe(false);
 		disconnect();
 	});
 });
