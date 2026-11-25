@@ -148,6 +148,31 @@ describe('兩個檔一前一後交來（#384）', () => {
 	});
 });
 
+describe('還在問「丟掉修改」時又交來一個檔（#384 審查）', () => {
+	it('第一個檔還在問：第二個等它問完才問，第一個按取消後第二個照樣問、丟掉才開', async () => {
+		const { shell, hand } = handShell();
+		fakeHost({ shell });
+		const { editor, session } = testEditor(null);
+		const disconnect = editor.file.connect();
+		await settle();
+		editor.file.create(practice());
+		session.change(flowOf(renameFlow(session.flow!, '練習二')));
+		hand({ name: '全國賽.cheer', bytes: writeFlowFile(contest(), {}) });
+		await settle();
+		expect(editor.file.askingToOpen).toBe(true);
+		hand({ name: '區賽.cheer', bytes: writeFlowFile(flowOf(createFlow({ name: '區賽', field: { strips: 9, layout: 'vertical' } })), {}) });
+		await settle();
+		await editor.file.answer('cancel');
+		await settle();
+		expect(session.flow?.name).toBe('練習二');
+		expect(editor.file.askingToOpen).toBe(true);
+		await editor.file.answer('discard');
+		await settle();
+		expect(session.flow?.name).toBe('區賽');
+		disconnect();
+	});
+});
+
 describe('交檔時還有沒存的東西（#384）', () => {
 	it('欄位裡打了還沒送出的字：先送出、照「開別支」先問，不悄悄丟掉', async () => {
 		const { shell, hand } = handShell();

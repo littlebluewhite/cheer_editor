@@ -75,6 +75,8 @@ export class FlowFile {
 	#openError = $state('');
 	/** 等教練回答「還沒存」：確定就做這件事（換流程）。open = 問的是要開別的流程檔。 */
 	#asking = $state.raw<{ then: () => void; open: boolean } | null>(null);
+	/** 等「還沒存」那題問完（答了、收掉、換成別題）的：殼交來的檔排隊開，前一個還在問就不拿下一個（#384 審查）。 */
+	#askedWaiters: (() => void)[] = [];
 	/** 開檔時那個檔有改過沒存的草稿：等教練回答救回修改、用檔案、取消（answerDraft）。 */
 	#draftAsk = $state.raw<(DraftAsk & { resolve: (choice: DraftChoice) => void }) | null>(null);
 	/** 按「開啟」時已經答應丟掉還沒存的修改：選到的檔打開時不再問。又改了流程就不算。 */
@@ -833,13 +835,13 @@ export class FlowFile {
 	 */
 	mayChoose(choose: () => void): boolean {
 		if (this.#openApproved || !this.#editor.session.unsavedOrAsking) return true;
-		this.#asking = {
+		this.#ask({
 			open: true,
 			then: () => {
 				this.#openApproved = true;
 				choose();
 			}
-		};
+		});
 		return false;
 	}
 
@@ -926,20 +928,31 @@ export class FlowFile {
 		const then = this.#asking?.then;
 		if (!then) return;
 		if (choice === 'cancel') {
-			this.#asking = null;
+			this.#ask(null);
 			return;
 		}
 		if (choice === 'save') {
 			if (this.#editor.session.questionOpen) {
-				this.#asking = null;
+				this.#ask(null);
 				this.#editor.session.notice = m.file_unanswered();
 				return;
 			}
 			await this.save();
 			if (this.#editor.session.unsaved || !this.#asking) return;
 		}
-		this.#asking = null;
+		this.#ask(null);
 		then();
+	}
+
+	/** 換上（或收掉）「還沒存」那題：在等上一題問完的接著做。 */
+	#ask(next: { then: () => void; open: boolean } | null) {
+		this.#asking = next;
+		for (const done of this.#askedWaiters.splice(0)) done();
+	}
+
+	/** 「還沒存」那題問完了（沒在問就是現在）。 */
+	#asked(): Promise<void> {
+		return this.#asking ? new Promise((done) => this.#askedWaiters.push(done)) : Promise.resolve();
 	}
 
 	/** 開檔時那個檔有改過沒存的草稿：問教練的那支流程（名字、草稿什麼時候存的）。沒在問是 null。 */
@@ -961,7 +974,7 @@ export class FlowFile {
 			if (this.ownsDraft) void this.#dropDraft(this.#draftId);
 			then();
 		};
-		if (this.#editor.session.unsavedOrAsking && !approved) this.#asking = { then: go, open };
+		if (this.#editor.session.unsavedOrAsking && !approved) this.#ask({ then: go, open });
 		else go();
 	}
 
@@ -1069,6 +1082,8 @@ export class FlowFile {
 		if (blocked()) return true;
 		if (leave) leave(() => void open());
 		else await open();
+		// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
+		await this.#asked();
 		return true;
 	}
 
