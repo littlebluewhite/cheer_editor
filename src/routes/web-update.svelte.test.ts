@@ -4,10 +4,10 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { appShell } from '#lib/app-shell.js';
 import { playScenario, scenario, scenarioShell } from '#lib/scenario-shell.js';
-import { createFlow, writeFlowFile } from '#lib/core';
+import { createFlow, renameFlow, writeFlowFile } from '#lib/core';
 import type { Shell } from '#lib/host.js';
 import { flowOf } from '#lib/test-flows.js';
-import { editorPage, fakeDraftStore, fakeHost, fakeSettings, flush, menuItem } from '#lib/test-fakes.js';
+import { editorPage, fakeDraftStore, fakeHost, fakeSettings, flush, menuItem, testEditor } from '#lib/test-fakes.js';
 import { SETTLE_MS } from '#lib/web-update.js';
 import Page from './+page.svelte';
 
@@ -127,5 +127,42 @@ describe('App：殼自己更新網頁', () => {
 		expect(editor.session.flow?.name).toBe('全國賽');
 		await settle();
 		expect(sent).not.toContain('useNewWebBundle');
+	});
+
+	it('點流程檔打開 App、那個檔有改過沒存的草稿（#384 審查）：還在問救回修改時，新網頁下載好了也不換', async () => {
+		sessionStorage.setItem('cheer-editor:webBundleReady', '1');
+		const bytes = writeFlowFile(flowOf(createFlow({ name: '全國賽', field: { strips: 9, layout: 'vertical' } })), {});
+		// 這台有這個檔改過沒存的草稿
+		const drafts = fakeDraftStore();
+		const before = testEditor(null, { draftStore: drafts.store });
+		const stop = before.editor.file.connect();
+		await flush();
+		await before.editor.file.open(new File([bytes.slice()], '全國賽.cheer'));
+		before.session.change(flowOf(renameFlow(before.session.flow!, '全國賽改')));
+		before.editor.file.pageHidden();
+		await flush();
+		stop();
+		let held: string | null = bytes.toBase64();
+		const sent: string[] = [];
+		const shell: Shell = {
+			inApp: true,
+			can: (feature) => ['webUpdate', 'settings', 'openFile'].includes(feature),
+			send(name) {
+				sent.push(name);
+				if (name !== 'takeOpenedFile') return Promise.resolve(true);
+				const r = held && { name: '全國賽.cheer', bytes: held };
+				held = null;
+				return Promise.resolve(r);
+			},
+			on: () => () => {}
+		};
+		fakeHost({ shell, settings: fakeSettings().settings });
+		const { editor, props } = editorPage(null, { draftStore: drafts.store });
+		render(Page, props);
+		await flush();
+		await flush();
+		expect(editor.file.draftAsk).not.toBeNull();
+		await settle();
+		expect(sent, '還在問，不換').not.toContain('useNewWebBundle');
 	});
 });

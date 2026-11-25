@@ -147,8 +147,11 @@
 	/** 首頁和帳號：登入的是誰、我的流程、還沒傳的紀錄、離線副本、登出（編輯器 module 握著）。 */
 	const home = editor.home;
 	onMount(() => void home.load());
-	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。打開 App 還在回上次那支不算閒著：不在開到一半時重新載入（#379） */
-	const webUpdate = followWebUpdate(host().shell, () => !session.flow && !editor.hasUnsavedWork && !editor.file.reopening);
+	/** App：殼下載好新網頁後，回到首頁才換上（#lib/web-update.js）。打開 App 還在回上次那支、還在開交來的檔不算閒著：不在開到一半時重新載入（#379、#384） */
+	const webUpdate = followWebUpdate(
+		host().shell,
+		() => !session.flow && !editor.hasUnsavedWork && !editor.file.reopening && !editor.file.handingFile
+	);
 	onMount(() => webUpdate.stop);
 	$effect(() => {
 		if (!flow) untrack(() => webUpdate.cameHome());

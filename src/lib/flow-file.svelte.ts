@@ -114,6 +114,8 @@ export class FlowFile {
 	#reopening = $state(host().shell.can(SETTINGS_FEATURE) && loadLastFlow() !== '');
 	/** 打開時讀草稿、開交來的檔（#384）：還沒做完時殼又交來檔，排在後面開。 */
 	#handing: Promise<unknown> = Promise.resolve();
+	/** 正在開殼交來的檔（拿到了、還沒開好或還在問）：App 換新網頁要等它（#384 審查）。 */
+	#handingFile = false;
 
 	/** 給編輯器的流程算從檔案開的。 */
 	constructor(editor: Editor) {
@@ -1082,10 +1084,20 @@ export class FlowFile {
 			await this.#openBytes(new Uint8Array(await file.arrayBuffer()), file.name, saver, undefined, () => blocked(left));
 		};
 		if (blocked(false)) return true;
-		await open(false);
-		// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
-		await this.#asked();
+		this.#handingFile = true;
+		try {
+			await open(false);
+			// 要先問「還沒存」：問完了才拿下一個交來的檔，不換掉還在問的這一題
+			await this.#asked();
+		} finally {
+			this.#handingFile = false;
+		}
 		return true;
+	}
+
+	/** 正在開殼交來的檔（還在解碼、還在問救回修改或丟掉修改）：不在這時換新網頁，不然要再交一次。 */
+	get handingFile(): boolean {
+		return this.#handingFile;
 	}
 
 	/** App 打開時正在回上次那支（還沒開好、還沒確定不見了）。 */
