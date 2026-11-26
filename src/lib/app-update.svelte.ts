@@ -7,10 +7,8 @@ import type { CloudSteps } from '#lib/cloud-steps.svelte.js';
 import type { Shell } from '#lib/host.js';
 import { WEB_UPDATE_FEATURE } from '#lib/web-update.js';
 
-/**
- * App Store 上這個 App 的網址。上架後才有（網站主人填），先留這裡；沒有時按鈕按不下去。
- */
-export const APP_STORE_URL: string | null = null;
+/** App Store 上這個 App 的網址（台灣，2026-11-26 上架，#402）；沒有時按鈕按不下去。 */
+export const APP_STORE_URL: string | null = 'https://apps.apple.com/tw/app/id6838406228';
 
 /** checking 正在問殼；ready 殼有新網頁；none 殼還沒有（按了再抓一次）；tooOld 這個殼太舊；updating 按了、等殼換。 */
 export type AppUpdateStatus = 'checking' | 'ready' | 'none' | 'tooOld' | 'updating';

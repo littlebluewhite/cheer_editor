@@ -77,7 +77,8 @@ describe('App：雲端流程被擋時的更新', () => {
 		fakeHost({ shell: appShell(fake.bridge) });
 		await open();
 		expect(text(badge())).toContain('這版 App 太舊，請到 App Store 更新');
-		expect(within(badge()).getByRole('button', { name: '到 App Store' })).toBeTruthy();
+		const store = within(badge()).getByRole('button', { name: '到 App Store' });
+		expect(store.getAttribute('href'), '上架後的網址（#402）').toBe('https://apps.apple.com/tw/app/id6838406228');
 		expect(within(badge()).queryByRole('button', { name: '更新' })).toBeNull();
 		fake.done();
 	});

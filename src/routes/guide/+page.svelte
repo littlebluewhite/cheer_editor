@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 使用說明：從編輯器上方列「選單」的「使用說明」開在新分頁。
 	// 用詞照 GLOSSARY.md 和畫面上的字；圖在 src/lib/guide/，原始檔在 docs/guide-diagrams/（fireworks-tech-graph 產生）。
+	import { APP_STORE_URL } from '#lib/app-update.svelte.js';
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { host } from '#lib/host.js';
@@ -30,8 +31,8 @@
 	import toolsShot from '#lib/guide/shots/tools.webp';
 
 	const editorHref = resolve('/');
-	/** 「App 裡：…」的段落（#398）：上架前只在 App 裡看得到，網頁版的人還裝不到 App；上架當天（#402）改成 true，網頁版也看得到。 */
-	const APP_LISTED = false;
+	/** 「App 裡：…」的段落（#398）：上架前只在 App 裡看得到；2026-11-26 上架（#402），網頁版也看得到。 */
+	const APP_LISTED = true;
 	const showApp = APP_LISTED || host().shell.inApp;
 	/** 編輯器的完整網址：部署在哪就寫哪，所以等到瀏覽器裡才算。 */
 	let editorUrl = $state('');
@@ -205,7 +206,7 @@
 						<a href="#save">4.9</a>）。
 					</li>
 					{#if showApp}
-						<li class="app"><b>App 裡：</b>iPhone、iPad 的 App 跟網頁版是同一套畫面，這份說明兩邊都適用，只有 App 才不一樣的地方寫成「App 裡：…」。同一台 iPhone 或 iPad 上，App 和瀏覽器各存各的、各登各的：在 Safari 做的本機流程，先存成流程檔，再用 App 打開（見 <a href="#最近的流程">4.1 的「最近的流程」</a>）。刪掉 App，裡面的草稿就沒了。App 會自己更新，太舊時會叫你到 App Store 更新。</li>
+						<li class="app"><b>App 裡：</b>iPhone、iPad 可以從 <a href={APP_STORE_URL} target="_blank" rel="noopener">App Store</a> 裝 App（只上台灣、iOS／iPadOS 18.4 以上）。App 跟網頁版是同一套畫面，這份說明兩邊都適用，只有 App 才不一樣的地方寫成「App 裡：…」。同一台 iPhone 或 iPad 上，App 和瀏覽器各存各的、各登各的：在 Safari 做的本機流程，先存成流程檔，再用 App 打開（見 <a href="#最近的流程">4.1 的「最近的流程」</a>）。刪掉 App，裡面的草稿就沒了。App 會自己更新，太舊時會叫你到 App Store 更新。</li>
 					{/if}
 				</ul>
 			</section>

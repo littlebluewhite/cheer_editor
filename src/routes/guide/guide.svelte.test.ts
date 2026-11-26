@@ -521,10 +521,13 @@ describe('App 的做法（#398）', () => {
 		expect(near('一起記成功率'), '換手機').toContain('換手機前');
 	});
 
-	it('網頁版：上架前看不到「App 裡：…」；「加到主畫面」那段標「網頁版」', () => {
+	it('網頁版：上架後（#402）也看得到「App 裡：…」，第 1 章有 App Store 的連結；「加到主畫面」那段標「網頁版」', () => {
 		render(Guide);
-		expect(appText()).toEqual([]);
-		expect(document.getElementById('cloud')!.textContent).not.toContain('App 裡');
+		expect(appText().length).toBeGreaterThan(0);
+		const first = document.querySelector('main li.app')!;
+		const store = [...first.querySelectorAll('a')].find((a) => a.textContent === 'App Store')!;
+		expect(store.getAttribute('href')).toBe('https://apps.apple.com/tw/app/id6838406228');
+		expect(first.textContent).toMatch(/只上台灣.*iOS／iPadOS 18\.4 以上/);
 		const item = [...document.querySelectorAll('#cloud li')].find((li) => li.textContent?.includes('加到主畫面'))!;
 		expect(item.textContent).toContain('網頁版');
 	});
