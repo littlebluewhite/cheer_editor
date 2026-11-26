@@ -450,6 +450,31 @@ describe('上次那支是雲端流程', () => {
 		expect(editor.file.can(true).edit.ok).toBe(true);
 	});
 
+	it('沒有離線副本、等伺服器時在首頁建了一支：不被上次那支換掉，存進草稿', async () => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const read = s.server.cloudFlow.bind(s.server);
+		const held = Promise.withResolvers<void>();
+		s.server.cloudFlow = async (id) => {
+			await held.promise;
+			return read(id);
+		};
+		const drafts = fakeDraftStore();
+		const { editor, session } = reopenApp(s, 'cloud:c1', { draftStore: drafts.store });
+		await flush();
+		editor.file.create(contest());
+		held.resolve();
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		expect(editor.file.source.kind).toBe('local');
+		await new Promise((r) => setTimeout(r, 1100));
+		const names = [...drafts.all.values()].map((d) => {
+			const r = readFlowFile(d.bytes);
+			return r.kind === 'ok' ? r.flow.name : '';
+		});
+		expect(names).toContain('全國賽');
+	});
+
 	it('網頁版：記著雲端流程也不開，停在首頁', async () => {
 		const s = await openedBefore();
 		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'cloud:c1' });
