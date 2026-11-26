@@ -492,6 +492,52 @@ describe('上次那支是雲端流程', () => {
 		expect(editor.file.openError).toBe('');
 	});
 
+	it('沒有離線副本、伺服器一直沒回答時在首頁建了一支：當下就進草稿，不等伺服器（App 這時被關掉也不丟）', async () => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const held = Promise.withResolvers<void>();
+		s.server.cloudFlow = async () => {
+			await held.promise;
+			throw new Error('offline');
+		};
+		const drafts = fakeDraftStore();
+		const { editor } = reopenApp(s, 'cloud:c1', { draftStore: drafts.store });
+		await flush();
+		editor.file.create(contest());
+		await flush();
+		const names = [...drafts.all.values()].map((d) => {
+			const r = readFlowFile(d.bytes);
+			return r.kind === 'ok' ? r.flow.name : '';
+		});
+		expect(names).toContain('全國賽');
+		held.resolve();
+		await settle();
+	});
+
+	it.each([
+		['伺服器回來了', 'ok'],
+		['上次那支被刪了', 'gone'],
+		['伺服器連不上', 'unreachable'],
+	] as const)('沒有離線副本、等伺服器時建了一支又回首頁，%s：還是停在首頁，不換回上次那支、不說錯', async (_, outcome) => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const read = s.server.cloudFlow.bind(s.server);
+		const held = Promise.withResolvers<void>();
+		s.server.cloudFlow = async (id) => {
+			await held.promise;
+			if (outcome === 'unreachable') throw new Error('offline');
+			return outcome === 'gone' ? null : read(id);
+		};
+		const { editor, session } = reopenApp(s, 'cloud:c1');
+		await flush();
+		editor.file.create(contest());
+		await editor.file.leaveToHome();
+		held.resolve();
+		await settle();
+		expect(session.flow).toBeNull();
+		expect(editor.file.openError).toBe('');
+	});
+
 	it('沒有離線副本、等伺服器時在首頁建了一支，上次那支被刪了：不留「不見了」', async () => {
 		const s = await openedBefore();
 		await s.offline.store.dropCopy('c1');

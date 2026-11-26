@@ -1039,13 +1039,17 @@ export class FlowFile {
 	/**
 	 * App 打開時回上次那支雲端流程（#383）：這台有離線副本就先開它（只能看、能記），房間連上了自動換成最新的；
 	 * 被收回、被刪掉照房間說的回首頁。沒有離線副本就照現在等伺服器（等的時候先畫首頁，不藏著）；
-	 * 等的時候在首頁開了別支（新建、開檔）：不換回上次那支，留在教練選的那支。
+	 * 等的時候在首頁開了別支（新建、開檔）：不換回上次那支，留在教練選的那支；又回首頁了也不換、打不開也不說。
+	 * 首頁畫出來了就開始自動存（這條路不讀草稿）：伺服器很久才回答，等的時候建的那支也當下進草稿。
 	 */
 	async #reopenCloud(id: string) {
 		const copy = (await this.#editor.adapters.offline.copies()).find((c) => c.flowId === id);
 		if (copy) return this.openCloud(id, false, () => true, copy);
 		this.#reopening = false;
-		await this.openCloud(id, false, () => !this.#editor.session.flow);
+		this.#draftChecked = true;
+		// 每次開流程都換草稿 id：id 沒變就是等的時候什麼都沒開過
+		const draftId = this.#draftId;
+		await this.openCloud(id, false, () => !this.#editor.session.flow && this.#draftId === draftId);
 	}
 
 	/**
