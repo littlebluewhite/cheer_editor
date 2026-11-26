@@ -417,7 +417,7 @@ export class FlowFile {
 	 * 打開一支雲端流程：從伺服器拿編排，連它的房間，每一步送伺服器存；沒有草稿。
 	 * 打開了就在這台留一份離線副本（#261，含音樂），只留最近打開的 5 支。連不上伺服器、這台有離線副本：打開那份
 	 * （斷線的樣子：只能看、能記），連上了就換成最新的（refresh：換的時候不關練習畫面、對話框）。
-	 * still：拿完了要換上之前再問一次還要不要（傳上雲端時又改了就不換）。
+	 * still：拿完了要換上之前再問一次還要不要（傳上雲端時又改了就不換）；打不開時不要了也不說（留著回首頁會看到舊的錯誤）。
 	 * first：先開這份離線副本，不先問伺服器（App 打開上次那支，#383）：先當斷著（只能看、能記），連上了就換成最新的。
 	 */
 	async openCloud(id: string, refresh = false, still = () => true, first: OfflineCopy | null = null) {
@@ -429,13 +429,13 @@ export class FlowFile {
 		} catch {
 			copy = (await store.copies()).find((c) => c.flowId === id) ?? null;
 			if (!copy) {
-				if (!refresh) this.#openError = m.file_cloud_open_unreachable();
+				if (!refresh && still()) this.#openError = m.file_cloud_open_unreachable();
 				return;
 			}
 		}
 		if (copy) found = { id, flow: copy.flow, step: copy.step, updatedAt: '', role: copy.role, records: copy.records };
 		if (!found) {
-			this.#openError = m.file_cloud_gone();
+			if (still()) this.#openError = m.file_cloud_gone();
 			return;
 		}
 		// 紀錄跟編排分開存（ADR 0011）：放回流程；別人記的記下名字（記號後面寫）。這台還沒傳的也放回去（#260）。

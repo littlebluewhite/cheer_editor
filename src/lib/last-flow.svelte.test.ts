@@ -475,6 +475,40 @@ describe('上次那支是雲端流程', () => {
 		expect(names).toContain('全國賽');
 	});
 
+	it('沒有離線副本、等伺服器時在首頁建了一支，伺服器連不上：不留「打不開」，回首頁看不到舊錯誤', async () => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const held = Promise.withResolvers<void>();
+		s.server.cloudFlow = async () => {
+			await held.promise;
+			throw new Error('offline');
+		};
+		const { editor, session } = reopenApp(s, 'cloud:c1');
+		await flush();
+		editor.file.create(contest());
+		held.resolve();
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		expect(editor.file.openError).toBe('');
+	});
+
+	it('沒有離線副本、等伺服器時在首頁建了一支，上次那支被刪了：不留「不見了」', async () => {
+		const s = await openedBefore();
+		await s.offline.store.dropCopy('c1');
+		const held = Promise.withResolvers<void>();
+		s.server.cloudFlow = async () => {
+			await held.promise;
+			return null;
+		};
+		const { editor, session } = reopenApp(s, 'cloud:c1');
+		await flush();
+		editor.file.create(contest());
+		held.resolve();
+		await settle();
+		expect(session.flow?.name).toBe('全國賽');
+		expect(editor.file.openError).toBe('');
+	});
+
 	it('網頁版：記著雲端流程也不開，停在首頁', async () => {
 		const s = await openedBefore();
 		const { settings } = fakeSettings({ 'cheer-editor:lastFlow': 'cloud:c1' });
