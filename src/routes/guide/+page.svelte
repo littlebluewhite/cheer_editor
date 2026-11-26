@@ -39,7 +39,7 @@
 	onMount(() => {
 		editorUrl = new URL(editorHref, location.href).href;
 		trialDone = loadTrialDone();
-		fromEditor = new URLSearchParams(location.search).get('from') === 'editor';
+		fromEditor = !inApp && new URLSearchParams(location.search).get('from') === 'editor';
 		minis = miniTocs();
 	});
 
@@ -64,6 +64,8 @@
 
 	// 從編輯器的「使用說明」打開（網址有 ?from=editor）：編輯器還開在原本的分頁，
 	// 左上的大標題就是關掉這個分頁，不在這裡再開一個編輯器。瀏覽器不讓關時，寫怎麼回去。
+	// App 裡沒有分頁：說明開在同一個畫面、蓋掉編輯器（殼的 createWebViewWith），關不掉，大標題照舊連回編輯器（重新載入會回上次那支，#378）。
+	const inApp = host().shell.inApp;
 	let fromEditor = $state(false);
 	let closeFailed = $state(false);
 	function closeTab() {
@@ -141,8 +143,13 @@
 			<a class="brand" href={editorHref}>競技啦啦隊流程編輯器</a>
 		{/if}
 		<span class="head-title">使用說明</span>
-		<span class="head-hint">從編輯器打開的話，關掉這個分頁就回到編輯器</span>
-		<span class="head-hint-short">關掉分頁回編輯器</span>
+		{#if inApp}
+			<span class="head-hint">點左上的標題回到編輯器</span>
+			<span class="head-hint-short">點左上回編輯器</span>
+		{:else}
+			<span class="head-hint">從編輯器打開的話，關掉這個分頁就回到編輯器</span>
+			<span class="head-hint-short">關掉分頁回編輯器</span>
+		{/if}
 		{#if closeFailed}
 			<p class="close-failed" role="status">關不掉這個分頁：請直接關掉它，編輯器還開在原本的分頁。</p>
 		{/if}

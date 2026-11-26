@@ -262,6 +262,19 @@ describe('使用說明', () => {
 			expect(screen.getByRole('status').textContent).toContain('關不掉這個分頁');
 		});
 
+		it('App 裡沒有分頁（說明開在同一個畫面）：大標題是回編輯器的連結，不叫關分頁、不寫「關掉分頁」', async () => {
+			history.replaceState(null, '', '/guide?from=editor');
+			fakeHost({ shell: fakeShell() });
+			const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+			render(Guide);
+			await tick();
+			expect(screen.queryByRole('button', { name: '關掉這個分頁，回到編輯器' })).toBeNull();
+			expect(screen.getByRole('link', { name: '競技啦啦隊流程編輯器' }).getAttribute('href')).toBe('/');
+			expect(close).not.toHaveBeenCalled();
+			expect(document.querySelector('.head')!.textContent).not.toContain('分頁');
+			expect(document.querySelector('.head-hint-short')?.textContent).toBe('點左上回編輯器');
+		});
+
 		it('不是從編輯器打開：大標題照舊是連到編輯器的連結', async () => {
 			render(Guide);
 			await tick();
