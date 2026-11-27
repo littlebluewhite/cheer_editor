@@ -398,7 +398,7 @@ export class Playback implements SessionPlayback {
 
 	/**
 	 * 用這個書籤：有 B 的把重複範圍換成 A 到 B（照書籤原樣，不吸整拍）、打開重複；
-	 * 只有 A 的、A 在重複範圍外：關掉重複（範圍留著），不然重複開著會被拉回範圍的 A。最後播放頭跳到 A。
+	 * 只有 A 的：重複範圍拿掉、重複關掉（A 在不在範圍裡都一樣）。最後播放頭跳到 A。
 	 * 書籤放不下（段不見了）就不動。
 	 */
 	useBookmark(bm: AnchoredRange) {
@@ -406,10 +406,7 @@ export class Playback implements SessionPlayback {
 		const s = f && bookmarkSeconds(f, bm);
 		if (!s) return;
 		if (bm.b) this.useRange({ a: bm.a, b: bm.b });
-		else if (this.#repeat) {
-			const span = this.#activeRange();
-			if (!span || outside(span, s.a)) this.#setRepeatOn(false);
-		}
+		else this.clearRange();
 		this.seek(s.a);
 	}
 

@@ -933,23 +933,23 @@ describe('播放：書籤', () => {
 		expect(playback.playingBookmark).toBeNull();
 	});
 
-	it('用只有 A 的、重複關著：播放頭跳到 A，重複範圍不動；只有 A 的書籤不算正在播', () => {
+	it('用只有 A 的、重複關著：播放頭跳到 A，重複範圍拿掉；只有 A 的書籤不算正在播', () => {
 		const { session, playback } = setup(withBookmarks());
 		playback.setRange(20, 24);
 		playback.setRepeat(false);
 		playback.useBookmark(bookmark(session.flow!, '後面'));
 		expect(playback.sec).toBe(8);
-		expect(playback.range).toEqual({ a: 20, b: 24 });
+		expect(playback.range).toBeNull();
 		expect(playback.repeat).toBe(false);
 		expect(playback.playingBookmark).toBeNull();
 	});
 
-	it('重複開著、A 在重複範圍外：重複關掉（範圍留著），停著按播放從書籤的 A 播', () => {
+	it('重複開著、A 在重複範圍外：重複關掉、範圍拿掉，停著按播放從書籤的 A 播', () => {
 		const { session, playback } = setup(withBookmarks());
 		playback.useBookmark(bookmark(session.flow!, '翻騰'));
 		playback.useBookmark(bookmark(session.flow!, '後面'));
 		expect(playback.repeat).toBe(false);
-		expect(playback.range).toEqual({ a: 2, b: 4 });
+		expect(playback.range).toBeNull();
 		playback.play();
 		expect(playback.sec).toBe(8);
 	});
@@ -964,17 +964,37 @@ describe('播放：書籤', () => {
 		expect(playback.sec).toBe(8);
 	});
 
-	it('重複開著、A 在重複範圍裡：重複照開，播放頭跳到 A；A 剛好在 B 算外面', () => {
-		let flow = flowOf(addBookmark(withBookmarks(), '中間', { segmentId: 's1', at: 12 }, null));
-		flow = flowOf(addBookmark(flow, '剛好 B', { segmentId: 's1', at: 16 }, null));
+	it('重複開著、A 在重複範圍裡：一樣關掉重複、範圍拿掉，原本的書籤不再亮', () => {
+		const flow = flowOf(addBookmark(withBookmarks(), '中間', { segmentId: 's1', at: 12 }, null));
 		const { session, playback } = setup(flow);
 		playback.useBookmark(bookmark(session.flow!, '翻騰'));
 		playback.useBookmark(bookmark(session.flow!, '中間'));
-		expect(playback.repeat).toBe(true);
-		expect(playback.sec).toBe(3);
-		playback.useBookmark(bookmark(session.flow!, '剛好 B'));
 		expect(playback.repeat).toBe(false);
-		expect(playback.sec).toBe(4);
+		expect(playback.range).toBeNull();
+		expect(playback.playingBookmark).toBeNull();
+		expect(playback.sec).toBe(3);
+	});
+
+	it('播放中、A 在重複範圍裡：從書籤的 A 一直往下播，過了原本的 B 不跳回去', () => {
+		const flow = flowOf(addBookmark(withBookmarks(), '中間', { segmentId: 's1', at: 12 }, null));
+		const { session, playback, engine, frames } = setup(flow);
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		playback.play();
+		playback.useBookmark(bookmark(session.flow!, '中間'));
+		expect(playback.playing).toBe(true);
+		const t0 = engine.time;
+		for (let t = 0; t < 2; t += 1 / 60) {
+			engine.time = engine.audible = t0 + t;
+			frames.step();
+		}
+		expect(playback.sec).toBeGreaterThan(4);
+	});
+
+	it('用只有 A 的之後存書籤：存播放頭那裡，不是舊的範圍', () => {
+		const { session, playback } = setup(withBookmarks());
+		playback.useBookmark(bookmark(session.flow!, '翻騰'));
+		playback.useBookmark(bookmark(session.flow!, '後面'));
+		expect(playback.bookmarkSpot).toEqual({ a: { segmentId: 's1', at: 32 }, b: null });
 	});
 
 	it('用半拍開始的書籤：重複範圍照書籤原樣，不吸到整拍', () => {
